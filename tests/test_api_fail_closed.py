@@ -1,15 +1,18 @@
-from fastapi.testclient import TestClient
+import pytest
 
 from opswitness.api.app import app
+from tests.support import request
 
 
-def test_mcp_trace_fails_closed_without_splunk_hec(monkeypatch) -> None:
+@pytest.mark.anyio
+async def test_mcp_trace_fails_closed_without_splunk_hec(monkeypatch) -> None:
     monkeypatch.delenv("SPLUNK_HEC_URL", raising=False)
     monkeypatch.delenv("SPLUNK_HEC_TOKEN", raising=False)
     monkeypatch.setenv("SPLUNK_REQUIRE_HEC", "true")
 
-    client = TestClient(app)
-    response = client.post(
+    response = await request(
+        app,
+        "POST",
         "/mcp/trace",
         json={
             "direction": "client_to_server",
@@ -24,25 +27,37 @@ def test_mcp_trace_fails_closed_without_splunk_hec(monkeypatch) -> None:
     assert "Splunk HEC is required" in response.json()["detail"]
 
 
-def test_raw_mcp_proxy_fails_closed_before_upstream(monkeypatch) -> None:
+@pytest.mark.anyio
+async def test_raw_mcp_proxy_fails_closed_before_upstream(monkeypatch) -> None:
     monkeypatch.delenv("SPLUNK_HEC_URL", raising=False)
     monkeypatch.delenv("SPLUNK_HEC_TOKEN", raising=False)
     monkeypatch.setenv("SPLUNK_REQUIRE_HEC", "true")
     monkeypatch.setenv("SPLUNK_MCP_URL", "https://example.invalid/mcp")
 
-    client = TestClient(app)
-    response = client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    response = await request(
+        app,
+        "POST",
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+    )
 
     assert response.status_code == 503
     assert "Splunk HEC is required" in response.json()["detail"]
 
 
-def test_raw_mcp_proxy_requires_upstream_when_evidence_is_disabled_for_local_test(monkeypatch) -> None:
+@pytest.mark.anyio
+async def test_raw_mcp_proxy_requires_upstream_when_evidence_is_disabled_for_local_test(
+    monkeypatch,
+) -> None:
     monkeypatch.setenv("SPLUNK_REQUIRE_HEC", "false")
     monkeypatch.delenv("SPLUNK_MCP_URL", raising=False)
 
-    client = TestClient(app)
-    response = client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    response = await request(
+        app,
+        "POST",
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+    )
 
     assert response.status_code == 503
     assert response.json()["detail"] == "SPLUNK_MCP_URL is not configured"
