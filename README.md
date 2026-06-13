@@ -47,7 +47,7 @@ OpsWitness MCP proxy
 6. Incident conclusions must cite graph evidence before OpsWitness accepts them.
 7. Remediation proposals remain pending until a human approves or rejects them.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the complete component and data flow.
+See [architecture_diagram.md](architecture_diagram.md) for the complete component and data flow.
 
 ## How Splunk Is Used
 
