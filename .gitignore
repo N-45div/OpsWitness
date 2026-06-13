@@ -1,0 +1,15 @@
+.opswitness/
+.agentproof/
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.venv/
+__pycache__/
+*.py[cod]
+src/*.egg-info/
+
+frontend/.next/
+frontend/node_modules/
+frontend/.env*.local
+image*.png
