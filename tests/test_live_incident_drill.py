@@ -8,6 +8,7 @@ from opswitness.core.event_store import JsonEventStore
 from opswitness.core.events import AgentEvent, EventType, SourceTrust
 from opswitness.graph.store import JsonGraphStore
 from opswitness.incidents.service import IncidentStore
+from opswitness.integrations.cdtsm import CDTSMForecast
 from opswitness.integrations.foundation_sec import FoundationSecAssessment, FoundationSecResult
 from opswitness.splunk.capabilities import SplunkAnomalyResult, SplunkMCPPreflight
 from opswitness.splunk.hec import SplunkHECHealth, SplunkHECReceipt
@@ -52,10 +53,24 @@ class FakeFoundationSec:
         )
 
 
+class FakeCDTSM:
+    async def forecast(self, **kwargs) -> CDTSMForecast:
+        return CDTSMForecast(
+            status="executed",
+            detail="forecasted",
+            horizon=2,
+            mean=[10.0, 12.0],
+            lower=[5.0, 6.0],
+            upper=[15.0, 18.0],
+            predicted_peak=12.0,
+        )
+
+
 def configure_stores(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(api_module, "EVENT_STORE", JsonEventStore(tmp_path / "events"))
     monkeypatch.setattr(api_module, "GRAPH_STORE", JsonGraphStore(tmp_path / "graphs"))
     monkeypatch.setattr(api_module, "INCIDENT_STORE", IncidentStore(tmp_path / "incidents"))
+    monkeypatch.setattr(api_module, "cdtsm_client", lambda: FakeCDTSM())
 
 
 def configure_governance(monkeypatch) -> None:
@@ -145,6 +160,7 @@ async def test_live_drill_runs_real_integration_pipeline(monkeypatch, tmp_path: 
         "hec",
         "mcp",
         "spl",
+        "cdtsm",
         "foundation_sec",
         "model",
         "verification",

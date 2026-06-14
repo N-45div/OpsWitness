@@ -83,6 +83,11 @@ export type SplunkStatus = {
     provider: string;
     splunk_hosted: false;
   };
+  cdtsm: {
+    configured: boolean;
+    ready: boolean;
+    detail: string;
+  };
   soar: {
     configured: boolean;
     reachable: boolean;

@@ -19,6 +19,7 @@ from opswitness.graph.builder import GraphBuilder
 from opswitness.graph.store import JsonGraphStore
 from opswitness.incidents.models import ApprovalRequest, DeploymentRecord, IncidentBrief, IncidentBriefRequest
 from opswitness.incidents.service import IncidentStore, build_incident_brief
+from opswitness.integrations.cdtsm import CDTSMClient
 from opswitness.integrations.foundation_sec import FoundationSecClient
 from opswitness.integrations.slack import SlackNotifier
 from opswitness.integrations.soar import SplunkSOARClient
@@ -197,6 +198,10 @@ def foundation_sec_client() -> FoundationSecClient:
     return FoundationSecClient()
 
 
+def cdtsm_client() -> CDTSMClient:
+    return CDTSMClient()
+
+
 def soar_client() -> SplunkSOARClient:
     return SplunkSOARClient(
         base_url=os.getenv("SPLUNK_SOAR_URL", ""),
@@ -358,6 +363,7 @@ async def splunk_status() -> dict:
             "provider": "huggingface-router",
             "splunk_hosted": False,
         },
+        "cdtsm": await cdtsm_client().health(),
         "soar": await soar_client().health(),
         "mcp_required_capability": "mcp_tool_execute",
     }
@@ -483,6 +489,51 @@ async def run_live_incident_drill(
     if anomaly.status != "executed":
         return fail("spl", "Native SPL investigation", anomaly.detail)
     complete("spl", "Native SPL investigation", anomaly.detail)
+
+    trend = _scenario_forecast_context(scenario["baseline"], scenario["current"])
+    try:
+        cdtsm = await cdtsm_client().forecast(
+            coarse_context=trend["coarse"],
+            fine_context=trend["fine"],
+            horizon=16,
+        )
+    except (RuntimeError, httpx.HTTPError, HTTPException) as exc:
+        unavailable("cdtsm", "Cisco deep time-series forecast", str(exc))
+    else:
+        if cdtsm.status == "executed":
+            await persist_events(
+                [
+                    AgentEvent(
+                        event_type=EventType.model_inference_completed,
+                        run_id=run_id,
+                        session_id=f"cdtsm-{suffix}",
+                        agent_id="opswitness-cdtsm",
+                        node_id=f"cdtsm:{suffix}",
+                        parent_node_id=anomaly.events[-1].node_id if anomaly.events else None,
+                        source_trust=SourceTrust.unknown,
+                        risk_tags=["predictive_operations", "self_hosted_model"],
+                        payload={
+                            "model_name": cdtsm.model,
+                            "provider": "cisco-ai",
+                            "serving_mode": "self-hosted-aitk-compatible",
+                            "splunk_hosted": False,
+                            "horizon": cdtsm.horizon,
+                            "predicted_peak": cdtsm.predicted_peak,
+                            "mean": cdtsm.mean,
+                            "lower_p5": cdtsm.lower,
+                            "upper_p95": cdtsm.upper,
+                            "input_source": "live-drill-operational-signal",
+                        },
+                    )
+                ]
+            )
+            complete(
+                "cdtsm",
+                "Cisco deep time-series forecast",
+                f"Forecasted {cdtsm.horizon} points; predicted peak {cdtsm.predicted_peak:.1f}.",
+            )
+        else:
+            unavailable("cdtsm", "Cisco deep time-series forecast", cdtsm.detail)
 
     model_evidence_ids = [event.node_id for event in anomaly.events][-8:]
     try:
@@ -715,6 +766,13 @@ async def run_live_incident_drill(
         stages=stages,
         incident=incident,
     )
+
+
+def _scenario_forecast_context(baseline: int, current: int) -> dict[str, list[float]]:
+    delta = current - baseline
+    coarse = [baseline + delta * fraction for fraction in (0, 0.02, 0.04, 0.08, 0.14, 0.24, 0.38, 0.56)]
+    fine = [baseline + delta * fraction for fraction in (0.01, 0.03, 0.06, 0.11, 0.2, 0.34, 0.58, 1.0)]
+    return {"coarse": coarse, "fine": fine}
 
 
 async def execute_live_incident_drill_job(job_id: str, request: LiveIncidentDrillRequest) -> None:

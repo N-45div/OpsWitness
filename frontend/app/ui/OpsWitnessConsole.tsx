@@ -186,6 +186,7 @@ export function OpsWitnessConsole() {
             label="Foundation-Sec advisory"
             ok={status ? status.foundation_sec.configured : null}
           />
+          <StatusRow label="Cisco time-series model" ok={status ? status.cdtsm.ready : null} />
           <StatusRow
             label="Splunk SOAR"
             ok={status ? status.soar.configured && status.soar.reachable : null}
