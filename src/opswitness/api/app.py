@@ -19,6 +19,7 @@ from opswitness.graph.builder import GraphBuilder
 from opswitness.graph.store import JsonGraphStore
 from opswitness.incidents.models import ApprovalRequest, DeploymentRecord, IncidentBrief, IncidentBriefRequest
 from opswitness.incidents.service import IncidentStore, build_incident_brief
+from opswitness.integrations.foundation_sec import FoundationSecClient
 from opswitness.integrations.slack import SlackNotifier
 from opswitness.integrations.soar import SplunkSOARClient
 from opswitness.mcp.normalizer import JsonRpcDirection, MCPTraceNormalizer
@@ -192,6 +193,10 @@ def slack_notifier() -> SlackNotifier:
     )
 
 
+def foundation_sec_client() -> FoundationSecClient:
+    return FoundationSecClient()
+
+
 def soar_client() -> SplunkSOARClient:
     return SplunkSOARClient(
         base_url=os.getenv("SPLUNK_SOAR_URL", ""),
@@ -328,6 +333,7 @@ async def proxy_raw_mcp(
 @app.get("/splunk/status")
 async def splunk_status() -> dict:
     hec = splunk_client()
+    hosted_model_name = os.getenv("SPLUNK_HOSTED_MODEL_NAME", "").strip()
     return {
         "hec": {
             **(await hec.health()).model_dump(),
@@ -342,12 +348,15 @@ async def splunk_status() -> dict:
         },
         "slack": {"configured": slack_notifier().configured},
         "hosted_model": {
-            "configured": mcp_proxy().config.enabled,
-            "model_name": os.getenv("SPLUNK_HOSTED_MODEL_NAME", "").strip()
-            or "splunk-native-anomalydetection",
-            "mode": "mltk_model"
-            if os.getenv("SPLUNK_HOSTED_MODEL_NAME", "").strip()
-            else "splunk_native_analytics",
+            "configured": bool(hosted_model_name and mcp_proxy().config.enabled),
+            "model_name": hosted_model_name or None,
+            "mode": "mltk_model" if hosted_model_name else "unavailable",
+        },
+        "foundation_sec": {
+            "configured": foundation_sec_client().configured,
+            "model_name": foundation_sec_client().model,
+            "provider": "huggingface-router",
+            "splunk_hosted": False,
         },
         "soar": await soar_client().health(),
         "mcp_required_capability": "mcp_tool_execute",
@@ -475,7 +484,62 @@ async def run_live_incident_drill(
         return fail("spl", "Native SPL investigation", anomaly.detail)
     complete("spl", "Native SPL investigation", anomaly.detail)
 
+    model_evidence_ids = [event.node_id for event in anomaly.events][-8:]
     try:
+        foundation_sec = await foundation_sec_client().assess(
+            scenario=drill.scenario,
+            service=scenario["service"],
+            signal=scenario["signal"],
+            baseline=scenario["baseline"],
+            current=scenario["current"],
+            evidence_references=model_evidence_ids,
+        )
+    except (RuntimeError, httpx.HTTPError, HTTPException) as exc:
+        unavailable("foundation_sec", "Foundation-Sec advisory reasoning", str(exc))
+    else:
+        if foundation_sec.status == "executed" and foundation_sec.assessment:
+            assessment = foundation_sec.assessment
+            await persist_events(
+                [
+                    AgentEvent(
+                        event_type=EventType.model_inference_completed,
+                        run_id=run_id,
+                        session_id=f"foundation-sec-{suffix}",
+                        agent_id="opswitness-foundation-sec",
+                        node_id=f"foundation-sec:{suffix}",
+                        parent_node_id=model_evidence_ids[-1] if model_evidence_ids else None,
+                        source_trust=SourceTrust.unknown,
+                        risk_tags=["external_model_advisory"],
+                        payload={
+                            "model_name": foundation_sec.model,
+                            "provider": foundation_sec.provider,
+                            "splunk_hosted": False,
+                            "classification": assessment.classification,
+                            "severity": assessment.severity,
+                            "probable_cause": assessment.probable_cause,
+                            "recommended_action": assessment.recommended_action,
+                            "confidence": assessment.confidence,
+                            "evidence_references": assessment.evidence_references,
+                            "advisory_only": True,
+                        },
+                    )
+                ]
+            )
+            complete(
+                "foundation_sec",
+                "Foundation-Sec advisory reasoning",
+                f"Validated {assessment.classification} assessment; human approval remains required.",
+            )
+        else:
+            unavailable("foundation_sec", "Foundation-Sec advisory reasoning", foundation_sec.detail)
+
+    try:
+        hosted_model_name = os.getenv("SPLUNK_HOSTED_MODEL_NAME", "").strip()
+        analytics_label = (
+            "Configured Splunk MLTK model inference"
+            if hosted_model_name
+            else "Splunk-native anomaly analytics"
+        )
         hosted_model = await run_hosted_model_inference(
             mcp_proxy(),
             scenario_query=anomaly.query,
@@ -484,7 +548,7 @@ async def run_live_incident_drill(
         if hosted_model.events:
             await persist_events(hosted_model.events)
     except (RuntimeError, httpx.HTTPError, HTTPException) as exc:
-        unavailable("model", "Splunk-hosted model inference", str(exc))
+        unavailable("model", analytics_label, str(exc))
     else:
         if hosted_model.status == "executed":
             await persist_events(
@@ -499,14 +563,15 @@ async def run_live_incident_drill(
                         payload={
                             "model_name": os.getenv("SPLUNK_HOSTED_MODEL_NAME")
                             or "splunk-native-anomalydetection",
+                            "splunk_hosted": bool(hosted_model_name),
                             "status": hosted_model.status,
                         },
                     )
                 ]
             )
-            complete("model", "Splunk-hosted model inference", hosted_model.detail)
+            complete("model", analytics_label, hosted_model.detail)
         else:
-            unavailable("model", "Splunk-hosted model inference", hosted_model.detail)
+            unavailable("model", analytics_label, hosted_model.detail)
 
     try:
         verification = await verify_with_saved_search(
@@ -673,7 +738,7 @@ async def start_live_incident_drill_job(
 
 
 @app.get("/drills/live-incident/jobs/{job_id}")
-def get_live_incident_drill_job(job_id: str) -> LiveIncidentDrillJob:
+async def get_live_incident_drill_job(job_id: str) -> LiveIncidentDrillJob:
     try:
         return LIVE_DRILL_JOBS[job_id]
     except KeyError as exc:

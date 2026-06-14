@@ -8,8 +8,10 @@ from opswitness.core.event_store import JsonEventStore
 from opswitness.core.events import AgentEvent, EventType, SourceTrust
 from opswitness.graph.store import JsonGraphStore
 from opswitness.incidents.service import IncidentStore
+from opswitness.integrations.foundation_sec import FoundationSecAssessment, FoundationSecResult
 from opswitness.splunk.capabilities import SplunkAnomalyResult, SplunkMCPPreflight
 from opswitness.splunk.hec import SplunkHECHealth, SplunkHECReceipt
+from opswitness.splunk.governance import MCPToolExecution
 from tests.support import request
 
 
@@ -30,19 +32,54 @@ class FakeSlack:
         return "sent", "delivered"
 
 
+class FakeFoundationSec:
+    configured = True
+    model = "fdtn-ai/Foundation-Sec-1.1-8B-Instruct:test"
+
+    async def assess(self, **kwargs) -> FoundationSecResult:
+        return FoundationSecResult(
+            status="executed",
+            detail="validated",
+            model=self.model,
+            assessment=FoundationSecAssessment(
+                classification="deployment regression",
+                severity="high",
+                probable_cause="Evidence indicates a release-correlated regression.",
+                recommended_action="Validate a scoped rollback.",
+                confidence=91,
+                evidence_references=kwargs["evidence_references"],
+            ),
+        )
+
+
 def configure_stores(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(api_module, "EVENT_STORE", JsonEventStore(tmp_path / "events"))
     monkeypatch.setattr(api_module, "GRAPH_STORE", JsonGraphStore(tmp_path / "graphs"))
     monkeypatch.setattr(api_module, "INCIDENT_STORE", IncidentStore(tmp_path / "incidents"))
 
 
+def configure_governance(monkeypatch) -> None:
+    async def executed(*args, **kwargs):
+        return MCPToolExecution(
+            status="executed",
+            tool_name="splunk_run_query",
+            detail="Executed deterministic test governance stage.",
+        )
+
+    monkeypatch.setattr(api_module, "run_hosted_model_inference", executed)
+    monkeypatch.setattr(api_module, "verify_with_saved_search", executed)
+    monkeypatch.setattr(api_module, "discover_kv_policy", executed)
+
+
 @pytest.mark.anyio
 async def test_live_drill_runs_real_integration_pipeline(monkeypatch, tmp_path: Path) -> None:
     configure_stores(monkeypatch, tmp_path)
+    configure_governance(monkeypatch)
     monkeypatch.setenv("SPLUNK_MCP_URL", "https://splunk.example/mcp")
     monkeypatch.setenv("SPLUNK_MCP_BEARER_TOKEN", "test-token")
     monkeypatch.setattr(api_module, "splunk_client", lambda: FakeHEC())
     monkeypatch.setattr(api_module, "slack_notifier", lambda: FakeSlack())
+    monkeypatch.setattr(api_module, "foundation_sec_client", lambda: FakeFoundationSec())
 
     async def fake_preflight(proxy, run_id):
         return (
@@ -108,6 +145,7 @@ async def test_live_drill_runs_real_integration_pipeline(monkeypatch, tmp_path: 
         "hec",
         "mcp",
         "spl",
+        "foundation_sec",
         "model",
         "verification",
         "policy",
@@ -134,6 +172,7 @@ async def test_live_drill_runs_real_integration_pipeline(monkeypatch, tmp_path: 
 @pytest.mark.anyio
 async def test_live_drill_fails_visibly_without_hec(monkeypatch, tmp_path: Path) -> None:
     configure_stores(monkeypatch, tmp_path)
+    configure_governance(monkeypatch)
     monkeypatch.delenv("SPLUNK_HEC_URL", raising=False)
     monkeypatch.delenv("SPLUNK_HEC_TOKEN", raising=False)
     monkeypatch.setenv("SPLUNK_REQUIRE_HEC", "true")
@@ -172,10 +211,12 @@ async def test_live_drill_supports_distinct_scenarios(
     title: str,
 ) -> None:
     configure_stores(monkeypatch, tmp_path)
+    configure_governance(monkeypatch)
     monkeypatch.setenv("SPLUNK_MCP_URL", "https://splunk.example/mcp")
     monkeypatch.setenv("SPLUNK_MCP_BEARER_TOKEN", "test-token")
     monkeypatch.setattr(api_module, "splunk_client", lambda: FakeHEC())
     monkeypatch.setattr(api_module, "slack_notifier", lambda: FakeSlack())
+    monkeypatch.setattr(api_module, "foundation_sec_client", lambda: FakeFoundationSec())
 
     async def fake_preflight(proxy, run_id):
         return (
