@@ -1,4 +1,4 @@
-import type { IncidentBrief, RunGraph, RunSummary, SplunkStatus } from "./types";
+import type { IncidentBrief, LiveIncidentDrillResult, RunGraph, RunSummary, SplunkStatus } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -46,6 +46,13 @@ export function decideIncident(
   return request<IncidentBrief>(`/incidents/${incidentId}/approval`, {
     method: "POST",
     body: JSON.stringify({ decision, approver })
+  });
+}
+
+export function runLiveIncidentDrill() {
+  return request<LiveIncidentDrillResult>("/drills/live-incident", {
+    method: "POST",
+    body: JSON.stringify({})
   });
 }
 

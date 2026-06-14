@@ -6,17 +6,35 @@ import {
   Clipboard,
   Database,
   GitBranch,
+  LoaderCircle,
   MessageSquare,
   Network,
+  Play,
   RefreshCw,
   ShieldCheck,
   Timer,
   X
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiBase, decideIncident, getRun, getRunSpl, listIncidents, listRuns, splunkStatus } from "./api";
+import {
+  apiBase,
+  decideIncident,
+  getRun,
+  getRunSpl,
+  listIncidents,
+  listRuns,
+  runLiveIncidentDrill,
+  splunkStatus
+} from "./api";
 import { GraphCanvas } from "./GraphCanvas";
-import type { GraphNode, IncidentBrief, RunGraph, RunSummary, SplunkStatus } from "./types";
+import type {
+  GraphNode,
+  IncidentBrief,
+  LiveIncidentDrillResult,
+  RunGraph,
+  RunSummary,
+  SplunkStatus
+} from "./types";
 
 const severityRank = { none: 0, low: 1, medium: 2, high: 3, critical: 4 };
 
@@ -31,6 +49,8 @@ export function OpsWitnessConsole() {
   const [splQuery, setSplQuery] = useState("");
   const [copied, setCopied] = useState(false);
   const [incidents, setIncidents] = useState<IncidentBrief[]>([]);
+  const [drill, setDrill] = useState<LiveIncidentDrillResult | null>(null);
+  const [drillRunning, setDrillRunning] = useState(false);
 
   const loadRun = useCallback(async (runId: string) => {
     const [graph, spl] = await Promise.all([getRun(runId), getRunSpl(runId)]);
@@ -87,6 +107,21 @@ export function OpsWitnessConsole() {
       setError(err instanceof Error ? err.message : "Could not record approval decision");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function startLiveIncidentDrill() {
+    setDrillRunning(true);
+    setDrill(null);
+    setError(null);
+    try {
+      const result = await runLiveIncidentDrill();
+      setDrill(result);
+      await refresh(result.run_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not run the live incident drill");
+    } finally {
+      setDrillRunning(false);
     }
   }
 
@@ -177,6 +212,10 @@ export function OpsWitnessConsole() {
             </span>
           </div>
           <div className="toolbar">
+            <button className="primaryAction" onClick={startLiveIncidentDrill} disabled={drillRunning || loading}>
+              {drillRunning ? <LoaderCircle className="spin" size={16} /> : <Play size={16} />}
+              {drillRunning ? "Running live drill" : "Run live incident drill"}
+            </button>
             <button onClick={() => refresh()} disabled={loading}>
               <RefreshCw size={16} />
               Refresh
@@ -185,6 +224,7 @@ export function OpsWitnessConsole() {
         </header>
 
         {error && <div className="errorBar">{error}</div>}
+        {(drillRunning || drill) && <LiveDrillProgress running={drillRunning} drill={drill} />}
         {activeIncident && (
           <IncidentOverview incident={activeIncident} loading={loading} onDecision={approveIncident} />
         )}
@@ -263,6 +303,39 @@ export function OpsWitnessConsole() {
         </div>
       </section>
     </main>
+  );
+}
+
+function LiveDrillProgress({
+  running,
+  drill
+}: {
+  running: boolean;
+  drill: LiveIncidentDrillResult | null;
+}) {
+  return (
+    <section className={`drillProgress ${drill?.status === "failed" ? "failed" : ""}`}>
+      <div className="drillProgressHeading">
+        <div>
+          <span>Real integrations only</span>
+          <strong>{running ? "Executing live incident pipeline" : `Live pipeline ${drill?.status}`}</strong>
+        </div>
+        {running ? <LoaderCircle className="spin" size={20} /> : drill?.status === "completed" ? <Check size={20} /> : <X size={20} />}
+      </div>
+      {drill && (
+        <div className="drillStages">
+          {drill.stages.map((stage) => (
+            <div className={`drillStage ${stage.status}`} key={stage.id}>
+              {stage.status === "completed" ? <Check size={15} /> : <X size={15} />}
+              <span>
+                <strong>{stage.label}</strong>
+                <small>{stage.detail}</small>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -83,6 +83,7 @@ independent verification surface.
 - Safe SPL query rewriting
 - Slack incident notifications
 - Human remediation approval workflow
+- One-click live incident drill across HEC, MCP, native SPL, Slack, and approval
 - Interactive Next.js evidence graph and timeline
 - Importable native Splunk dashboard
 
@@ -171,6 +172,11 @@ make frontend
 
 Open `http://127.0.0.1:3000`.
 
+Click **Run live incident drill** to execute the configured integrations end to
+end. OpsWitness fails visibly at the exact unavailable stage and never replaces
+it with sample data. A successful run loads its evidence graph and leaves the
+proposed remediation pending for a human approval or rejection.
+
 ## Connect An MCP Client
 
 Configure an MCP-capable AI client to connect through OpsWitness:
@@ -245,6 +251,7 @@ index=opswitness sourcetype=opswitness:event event_type="splunk.search.generated
 | `GET` | `/splunk/status` | Inspect configured Splunk capabilities |
 | `POST` | `/splunk/mcp/preflight` | Discover and safely call MCP metadata tools |
 | `POST` | `/splunk/anomaly-investigation` | Generate or execute native anomaly SPL |
+| `POST` | `/drills/live-incident` | Run the fail-closed live incident pipeline |
 | `POST` | `/integrations/deployments` | Record deployment context |
 | `POST` | `/incidents` | Create an evidence-cited incident |
 | `POST` | `/incidents/{incident_id}/approval` | Approve or reject remediation |

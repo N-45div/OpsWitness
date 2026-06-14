@@ -285,9 +285,25 @@ h2 {
   cursor: pointer;
 }
 
+.toolbar .primaryAction {
+  border-color: #245f48;
+  background: #267657;
+  color: #fff;
+}
+
 .toolbar button:disabled {
   opacity: 0.6;
   cursor: progress;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .errorBar {
@@ -295,6 +311,80 @@ h2 {
   background: #fff1f1;
   color: #8f2525;
   padding: 10px 20px;
+}
+
+.drillProgress {
+  border-bottom: 1px solid #b9d9ca;
+  background: #edf8f2;
+  padding: 12px 20px 14px;
+}
+
+.drillProgress.failed {
+  border-bottom-color: #efcaca;
+  background: #fff1f1;
+}
+
+.drillProgressHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--good);
+}
+
+.drillProgress.failed .drillProgressHeading {
+  color: var(--bad);
+}
+
+.drillProgressHeading span,
+.drillProgressHeading strong {
+  display: block;
+}
+
+.drillProgressHeading span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.drillProgressHeading strong {
+  margin-top: 3px;
+}
+
+.drillStages {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin-top: 12px;
+}
+
+.drillStage {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 7px;
+  color: var(--good);
+}
+
+.drillStage.failed {
+  color: var(--bad);
+}
+
+.drillStage strong,
+.drillStage small {
+  display: block;
+}
+
+.drillStage strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.drillStage small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .incidentOverview {
@@ -727,7 +817,8 @@ h2 {
   }
 
   .incidentMetrics,
-  .incidentDetailGrid {
+  .incidentDetailGrid,
+  .drillStages {
     grid-template-columns: 1fr 1fr;
   }
 }

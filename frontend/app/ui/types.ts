@@ -98,3 +98,19 @@ export type IncidentBrief = {
   created_at: string;
   updated_at: string;
 };
+
+export type LiveIncidentDrillStage = {
+  id: string;
+  label: string;
+  status: "completed" | "failed";
+  detail: string;
+};
+
+export type LiveIncidentDrillResult = {
+  status: "completed" | "failed";
+  run_id: string;
+  deployment_id: string;
+  incident_id?: string | null;
+  stages: LiveIncidentDrillStage[];
+  incident?: IncidentBrief | null;
+};
