@@ -154,6 +154,10 @@ h2 {
   color: #ffaaa5;
 }
 
+.statusRow .unknown {
+  color: #b8c5d1;
+}
+
 .sectionHeader,
 .topbar,
 .toolbar,

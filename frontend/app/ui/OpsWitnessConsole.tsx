@@ -154,17 +154,17 @@ export function OpsWitnessConsole() {
 
         <section className="statusPanel">
           <h2>Splunk</h2>
-          <StatusRow label="HEC" ok={Boolean(status?.hec.configured && status?.hec.reachable)} />
+          <StatusRow label="HEC" ok={status ? status.hec.configured && status.hec.reachable : null} />
           <StatusRow
             label="Direct REST (optional)"
-            ok={Boolean(status?.search.configured && status?.search.reachable)}
+            ok={status ? status.search.configured && status.search.reachable : null}
           />
-          <StatusRow label="MCP Proxy" ok={Boolean(status?.mcp_proxy.configured)} />
+          <StatusRow label="MCP Proxy" ok={status ? status.mcp_proxy.configured : null} />
           <StatusRow
             label="Preflight endpoint"
-            ok={Boolean(status?.mcp_proxy.preflight_configured)}
+            ok={status ? status.mcp_proxy.preflight_configured : null}
           />
-          <StatusRow label="Slack" ok={Boolean(status?.slack.configured)} />
+          <StatusRow label="Slack" ok={status ? status.slack.configured : null} />
           <p>HEC acknowledgement mode: {status?.hec.ack_mode ?? "unknown"}</p>
           <p>
             Native anomaly requires live tool:{" "}
@@ -465,11 +465,12 @@ function formatTime(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleTimeString();
 }
 
-function StatusRow({ label, ok }: { label: string; ok: boolean }) {
+function StatusRow({ label, ok }: { label: string; ok: boolean | null }) {
+  const state = ok === null ? "unavailable" : ok ? "connected" : "not connected";
   return (
     <div className="statusRow">
       <span>{label}</span>
-      <strong className={ok ? "ok" : "bad"}>{ok ? "connected" : "not connected"}</strong>
+      <strong className={ok === null ? "unknown" : ok ? "ok" : "bad"}>{state}</strong>
     </div>
   );
 }
