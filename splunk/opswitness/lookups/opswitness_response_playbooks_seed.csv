@@ -1,0 +1,4 @@
+_key,scenario,playbook,description,enabled
+deployment_regression,deployment_regression,rollback_checkout_release,Scoped rollback of the implicated checkout release,true
+credential_attack,credential_attack,contain_credential_attack,Temporary source throttling and step-up authentication,true
+queue_saturation,queue_saturation,scale_order_workers,Bounded worker scale-out and slow consumer inspection,true

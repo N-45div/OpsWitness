@@ -1,0 +1,4 @@
+_key,service,criticality,owner,allowed_actions,requires_approval,soar_playbook
+checkout-api,checkout-api,tier-1,commerce-sre,"[""scoped_rollback""]",true,rollback_checkout_release
+auth-gateway,auth-gateway,tier-0,security-operations,"[""temporary_ip_throttle"",""step_up_authentication""]",true,contain_credential_attack
+order-worker,order-worker,tier-1,fulfillment-sre,"[""bounded_worker_scale_out""]",true,scale_order_workers

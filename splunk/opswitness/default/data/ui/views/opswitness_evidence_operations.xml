@@ -1,0 +1,48 @@
+<form version="1.1" theme="dark">
+  <label>OpsWitness Evidence Operations</label>
+  <description>Splunk-native visibility into AI agent investigations, model evidence, policy decisions, and remediation.</description>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Time range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <single>
+        <title>Agent tool calls</title>
+        <search><query>sourcetype="opswitness:event" event_type="mcp.tool.called" | stats count</query><earliest>$time.earliest$</earliest><latest>$time.latest$</latest></search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Model inferences</title>
+        <search><query>sourcetype="opswitness:event" event_type="model.inference.completed" | stats count</query><earliest>$time.earliest$</earliest><latest>$time.latest$</latest></search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>SOAR executions</title>
+        <search><query>sourcetype="opswitness:event" event_type="soar.playbook.executed" | stats count</query><earliest>$time.earliest$</earliest><latest>$time.latest$</latest></search>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Evidence activity</title>
+        <search><query>sourcetype="opswitness:event" | timechart span=5m count by event_type limit=12</query><earliest>$time.earliest$</earliest><latest>$time.latest$</latest></search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+    <panel>
+      <table>
+        <title>Policy, approval, and response trail</title>
+        <search><query>sourcetype="opswitness:event" event_type IN ("policy.evaluated","human.approval.approved","human.approval.rejected","soar.playbook.executed") | table _time run_id event_type agent_id payload | sort - _time</query><earliest>$time.earliest$</earliest><latest>$time.latest$</latest></search>
+      </table>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,19 @@
+[]
+access = read : [ * ], write : [ admin ]
+export = system
+
+[savedsearches]
+access = read : [ * ], write : [ admin ]
+export = system
+
+[transforms/opswitness_service_policy_lookup]
+access = read : [ * ], write : [ admin ]
+export = system
+
+[transforms/opswitness_response_playbooks_lookup]
+access = read : [ * ], write : [ admin ]
+export = system
+
+[transforms/opswitness_model_feedback_lookup]
+access = read : [ * ], write : [ admin ]
+export = system
