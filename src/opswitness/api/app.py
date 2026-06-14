@@ -20,6 +20,7 @@ from opswitness.graph.store import JsonGraphStore
 from opswitness.incidents.models import ApprovalRequest, DeploymentRecord, IncidentBrief, IncidentBriefRequest
 from opswitness.incidents.service import IncidentStore, build_incident_brief
 from opswitness.integrations.slack import SlackNotifier
+from opswitness.integrations.soar import SplunkSOARClient
 from opswitness.mcp.normalizer import JsonRpcDirection, MCPTraceNormalizer
 from opswitness.mcp.proxy import MCPProxy, MCPProxyConfig
 from opswitness.rag.explainer import GraphExplainer
@@ -30,6 +31,13 @@ from opswitness.splunk.capabilities import (
     run_native_anomaly_investigation,
 )
 from opswitness.splunk.search import SplunkSearchClient, SplunkSearchConfig
+from opswitness.splunk.governance import (
+    SAVED_SEARCH_BY_SCENARIO,
+    discover_kv_policy,
+    persist_model_feedback,
+    run_hosted_model_inference,
+    verify_with_saved_search,
+)
 
 
 load_dotenv()
@@ -76,7 +84,7 @@ class LiveIncidentDrillRequest(BaseModel):
 class LiveIncidentDrillStage(BaseModel):
     id: str
     label: str
-    status: Literal["completed", "failed"]
+    status: Literal["completed", "failed", "unavailable"]
     detail: str
 
 
@@ -181,6 +189,14 @@ def slack_notifier() -> SlackNotifier:
     return SlackNotifier(
         webhook_url=os.getenv("SLACK_WEBHOOK_URL", ""),
         console_url=os.getenv("OPSWITNESS_CONSOLE_URL", "http://127.0.0.1:3000"),
+    )
+
+
+def soar_client() -> SplunkSOARClient:
+    return SplunkSOARClient(
+        base_url=os.getenv("SPLUNK_SOAR_URL", ""),
+        token=os.getenv("SPLUNK_SOAR_TOKEN", ""),
+        verify_tls=os.getenv("SPLUNK_VERIFY_TLS", "true").lower() != "false",
     )
 
 
@@ -325,6 +341,15 @@ async def splunk_status() -> dict:
             "native_anomaly_requires_tool": "splunk_run_query",
         },
         "slack": {"configured": slack_notifier().configured},
+        "hosted_model": {
+            "configured": mcp_proxy().config.enabled,
+            "model_name": os.getenv("SPLUNK_HOSTED_MODEL_NAME", "").strip()
+            or "splunk-native-anomalydetection",
+            "mode": "mltk_model"
+            if os.getenv("SPLUNK_HOSTED_MODEL_NAME", "").strip()
+            else "splunk_native_analytics",
+        },
+        "soar": await soar_client().health(),
         "mcp_required_capability": "mcp_tool_execute",
     }
 
@@ -382,6 +407,11 @@ async def run_live_incident_drill(
     def complete(stage_id: str, label: str, detail: str) -> None:
         stages.append(
             LiveIncidentDrillStage(id=stage_id, label=label, status="completed", detail=detail)
+        )
+
+    def unavailable(stage_id: str, label: str, detail: str) -> None:
+        stages.append(
+            LiveIncidentDrillStage(id=stage_id, label=label, status="unavailable", detail=detail)
         )
 
     def fail(stage_id: str, label: str, detail: str) -> LiveIncidentDrillResult:
@@ -446,6 +476,106 @@ async def run_live_incident_drill(
     complete("spl", "Native SPL investigation", anomaly.detail)
 
     try:
+        hosted_model = await run_hosted_model_inference(
+            mcp_proxy(),
+            scenario_query=anomaly.query,
+            run_id=run_id,
+        )
+        if hosted_model.events:
+            await persist_events(hosted_model.events)
+    except (RuntimeError, httpx.HTTPError, HTTPException) as exc:
+        unavailable("model", "Splunk-hosted model inference", str(exc))
+    else:
+        if hosted_model.status == "executed":
+            await persist_events(
+                [
+                    AgentEvent(
+                        event_type=EventType.model_inference_completed,
+                        run_id=run_id,
+                        session_id=f"model-{suffix}",
+                        agent_id="opswitness-hosted-model",
+                        node_id=f"model:{suffix}",
+                        source_trust=SourceTrust.trusted,
+                        payload={
+                            "model_name": os.getenv("SPLUNK_HOSTED_MODEL_NAME")
+                            or "splunk-native-anomalydetection",
+                            "status": hosted_model.status,
+                        },
+                    )
+                ]
+            )
+            complete("model", "Splunk-hosted model inference", hosted_model.detail)
+        else:
+            unavailable("model", "Splunk-hosted model inference", hosted_model.detail)
+
+    try:
+        verification = await verify_with_saved_search(
+            mcp_proxy(),
+            scenario=drill.scenario,
+            service=scenario["service"],
+            index=drill.index,
+            run_id=run_id,
+        )
+        if verification.events:
+            await persist_events(verification.events)
+    except (RuntimeError, httpx.HTTPError, HTTPException) as exc:
+        unavailable("verification", "Approved saved-search verification", str(exc))
+    else:
+        if verification.status == "executed":
+            await persist_events(
+                [
+                    AgentEvent(
+                        event_type=EventType.saved_search_verified,
+                        run_id=run_id,
+                        session_id=f"verification-{suffix}",
+                        agent_id="opswitness-approved-detection",
+                        node_id=f"verification:{suffix}",
+                        source_trust=SourceTrust.trusted,
+                        payload={
+                            "saved_search": SAVED_SEARCH_BY_SCENARIO[drill.scenario],
+                            "status": verification.status,
+                        },
+                    )
+                ]
+            )
+            complete("verification", "Approved saved-search verification", verification.detail)
+        else:
+            unavailable("verification", "Approved saved-search verification", verification.detail)
+
+    try:
+        policy = await discover_kv_policy(
+            mcp_proxy(),
+            service=scenario["service"],
+            run_id=run_id,
+        )
+        if policy.events:
+            await persist_events(policy.events)
+    except (RuntimeError, httpx.HTTPError, HTTPException) as exc:
+        unavailable("policy", "Splunk KV Store policy", str(exc))
+    else:
+        if policy.status == "executed":
+            await persist_events(
+                [
+                    AgentEvent(
+                        event_type=EventType.policy_evaluated,
+                        run_id=run_id,
+                        session_id=f"policy-{suffix}",
+                        agent_id="opswitness-policy",
+                        node_id=f"policy:{suffix}",
+                        source_trust=SourceTrust.trusted,
+                        payload={
+                            "policy_id": "opswitness_service_policy",
+                            "service": scenario["service"],
+                            "status": policy.status,
+                        },
+                    )
+                ]
+            )
+            complete("policy", "Splunk KV Store policy", policy.detail)
+        else:
+            unavailable("policy", "Splunk KV Store policy", policy.detail)
+
+    try:
         deployment = await record_deployment(
             DeploymentRecord(
                 deployment_id=deployment_id,
@@ -471,6 +601,7 @@ async def run_live_incident_drill(
     try:
         incident = await create_incident(
             IncidentBriefRequest(
+                scenario=drill.scenario,
                 run_id=run_id,
                 deployment_id=deployment_id,
                 service=scenario["service"],
@@ -667,7 +798,6 @@ def get_incident(incident_id: str) -> IncidentBrief:
 async def decide_incident(incident_id: str, approval: ApprovalRequest) -> IncidentBrief:
     incident = get_incident(incident_id)
     incident.approval_status = approval.decision
-    INCIDENT_STORE.save(incident)
     event_type = (
         EventType.human_approval_approved
         if approval.decision == "approved"
@@ -691,6 +821,62 @@ async def decide_incident(incident_id: str, approval: ApprovalRequest) -> Incide
             )
         ]
     )
+    try:
+        feedback = await persist_model_feedback(
+            mcp_proxy(),
+            run_id=incident.run_id,
+            scenario=incident.scenario,
+            accepted=approval.decision == "approved",
+            reviewer=approval.approver,
+        )
+        if feedback.events:
+            await persist_events(feedback.events)
+    except (RuntimeError, httpx.HTTPError, HTTPException):
+        pass
+    if approval.decision == "approved":
+        container_id = os.getenv("SPLUNK_SOAR_CONTAINER_ID", "").strip()
+        playbook = os.getenv(
+            f"SPLUNK_SOAR_PLAYBOOK_{incident.scenario.upper()}",
+            os.getenv("SPLUNK_SOAR_PLAYBOOK", ""),
+        ).strip()
+        if not soar_client().configured:
+            incident.soar_status = "not_configured"
+            incident.soar_detail = "Splunk SOAR is not configured."
+        elif not container_id or not playbook:
+            incident.soar_status = "not_configured"
+            incident.soar_detail = "SOAR container ID or scenario playbook is not configured."
+        elif not container_id.isdigit():
+            incident.soar_status = "failed"
+            incident.soar_detail = "SPLUNK_SOAR_CONTAINER_ID must be an integer."
+        else:
+            execution = await soar_client().run_playbook(
+                playbook=playbook,
+                container_id=int(container_id),
+            )
+            incident.soar_status = execution.status
+            incident.soar_detail = execution.detail
+            if execution.status == "executed":
+                await persist_events(
+                    [
+                        AgentEvent(
+                            event_type=EventType.soar_playbook_executed,
+                            run_id=incident.run_id,
+                            session_id=f"incident-{incident.incident_id}",
+                            agent_id=approval.approver,
+                            node_id=f"soar:{incident.incident_id}:{uuid4().hex[:6]}",
+                            parent_node_id=f"approval-decision:{incident.incident_id}",
+                            source_trust=SourceTrust.trusted,
+                            payload={
+                                "playbook": playbook,
+                                "container_id": int(container_id),
+                                "status": execution.status,
+                            },
+                        )
+                    ]
+                )
+    else:
+        incident.soar_status = "not_requested"
+    INCIDENT_STORE.save(incident)
     return incident
 
 

@@ -22,6 +22,8 @@ class EventType(StrEnum):
     mcp_tool_called = "mcp.tool.called"
     splunk_search_generated = "splunk.search.generated"
     splunk_search_executed = "splunk.search.executed"
+    saved_search_verified = "splunk.saved_search.verified"
+    model_inference_completed = "model.inference.completed"
     policy_evaluated = "policy.evaluated"
     human_approval_requested = "human.approval.requested"
     human_approval_approved = "human.approval.approved"
@@ -30,6 +32,7 @@ class EventType(StrEnum):
     incident_detected = "incident.detected"
     remediation_proposed = "remediation.proposed"
     notification_sent = "notification.sent"
+    soar_playbook_executed = "soar.playbook.executed"
     run_completed = "agent.run.completed"
 
 

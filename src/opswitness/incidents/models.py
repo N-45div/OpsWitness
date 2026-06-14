@@ -18,6 +18,7 @@ class DeploymentRecord(BaseModel):
 
 
 class IncidentBriefRequest(BaseModel):
+    scenario: str = "deployment_regression"
     run_id: str
     deployment_id: str
     service: str
@@ -39,6 +40,7 @@ class IncidentBrief(BaseModel):
     incident_id: str
     run_id: str
     deployment_id: str
+    scenario: str = "deployment_regression"
     title: str
     severity: Literal["low", "medium", "high", "critical"]
     probable_cause: str
@@ -55,6 +57,8 @@ class IncidentBrief(BaseModel):
     approval_status: Literal["pending", "approved", "rejected"] = "pending"
     slack_status: Literal["not_configured", "sent", "failed", "not_requested"] = "not_requested"
     slack_detail: str | None = None
+    soar_status: Literal["not_configured", "executed", "failed", "not_requested"] = "not_requested"
+    soar_detail: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

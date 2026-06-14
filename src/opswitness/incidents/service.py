@@ -39,6 +39,7 @@ def build_incident_brief(request: IncidentBriefRequest) -> IncidentBrief:
         incident_id=f"inc-{uuid4().hex[:10]}",
         run_id=request.run_id,
         deployment_id=request.deployment_id,
+        scenario=request.scenario,
         title=request.title or f"{request.service} deployment regression",
         severity=severity,
         probable_cause=request.probable_cause

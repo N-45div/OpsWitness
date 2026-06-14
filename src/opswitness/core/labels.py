@@ -12,6 +12,8 @@ NODE_TYPE_BY_EVENT = {
     EventType.mcp_tool_called: "ToolCall",
     EventType.splunk_search_generated: "SplunkSearch",
     EventType.splunk_search_executed: "SplunkResult",
+    EventType.saved_search_verified: "SavedSearchVerification",
+    EventType.model_inference_completed: "ModelInference",
     EventType.policy_evaluated: "PolicyDecision",
     EventType.human_approval_requested: "Approval",
     EventType.human_approval_approved: "ApprovalDecision",
@@ -20,6 +22,7 @@ NODE_TYPE_BY_EVENT = {
     EventType.incident_detected: "Incident",
     EventType.remediation_proposed: "RemediationProposal",
     EventType.notification_sent: "Notification",
+    EventType.soar_playbook_executed: "SOARExecution",
     EventType.run_completed: "RunCompletion",
 }
 
@@ -61,6 +64,10 @@ def event_label(event: AgentEvent) -> str:
         return payload.get("query", "splunk search")[:80]
     if event.event_type == EventType.splunk_search_executed:
         return payload.get("status", "search result")
+    if event.event_type == EventType.saved_search_verified:
+        return payload.get("saved_search", "saved search verification")
+    if event.event_type == EventType.model_inference_completed:
+        return payload.get("model_name", "hosted model inference")
     if event.event_type == EventType.policy_evaluated:
         return payload.get("policy_id", "policy")
     if event.event_type == EventType.human_approval_requested:
@@ -75,4 +82,6 @@ def event_label(event: AgentEvent) -> str:
         return payload.get("action", "remediation")
     if event.event_type == EventType.notification_sent:
         return payload.get("destination", "notification")
+    if event.event_type == EventType.soar_playbook_executed:
+        return payload.get("playbook", "SOAR playbook")
     return event.event_type.value
