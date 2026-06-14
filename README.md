@@ -38,6 +38,8 @@ OpsWitness MCP proxy
         |
         +--> Foundation-Sec advisory reasoning via Hugging Face
         |
+        +--> Self-hosted Cisco Deep Time Series Model forecast
+        |
         +--> Incident Room, Slack brief, human approval, Splunk SOAR
 ```
 
@@ -49,10 +51,12 @@ OpsWitness MCP proxy
    the investigation.
 6. Foundation-Sec optionally produces a validated, advisory-only security
    assessment from cited evidence.
-7. Splunk KV Store policy constrains the permitted response.
-8. OpsWitness reconstructs the run as a causal graph and evaluates risky paths.
-9. Remediation proposals remain pending until a human approves or rejects them.
-10. Approved actions execute through Splunk SOAR only when SOAR is configured.
+7. The organizer-supported Cisco Deep Time Series Model optionally produces a
+   zero-shot predictive forecast with confidence bounds.
+8. Splunk KV Store policy constrains the permitted response.
+9. OpsWitness reconstructs the run as a causal graph and evaluates risky paths.
+10. Remediation proposals remain pending until a human approves or rejects them.
+11. Approved actions execute through Splunk SOAR only when SOAR is configured.
 
 See [architecture_diagram.md](architecture_diagram.md) for the complete component and data flow.
 
@@ -92,6 +96,7 @@ independent verification surface.
 - Portable Splunk-native anomaly investigation
 - Splunk-native anomaly inference with optional named MLTK model
 - Validated Foundation-Sec advisory reasoning with cited-evidence filtering
+- Self-hosted Cisco Deep Time Series Model zero-shot forecasting
 - Organization-approved saved-search verification
 - KV Store-backed service and response policy
 - Human-approved Splunk SOAR execution
@@ -122,6 +127,7 @@ independent verification surface.
 - Optional Slack incoming webhook
 - Optional Splunk SOAR endpoint and automation token
 - Optional Hugging Face token for Foundation-Sec advisory reasoning
+- Optional self-hosted Cisco Deep Time Series Model server
 
 ## Installation
 
@@ -168,6 +174,8 @@ SLACK_WEBHOOK_URL=
 OPSWITNESS_CONSOLE_URL=http://127.0.0.1:3000
 SPLUNK_HOSTED_MODEL_NAME=
 FOUNDATION_SEC_API_KEY=
+CDTSM_ENDPOINT=http://127.0.0.1:8080
+CDTSM_ENV_FILE=/absolute/path/to/cisco-time-series-model/serve/.env
 SPLUNK_SOAR_URL=
 SPLUNK_SOAR_TOKEN=
 SPLUNK_SOAR_CONTAINER_ID=
@@ -185,6 +193,35 @@ Foundation-Sec is served through the Hugging Face router in the optional
 advisory stage. OpsWitness records its provider, model, citations, and
 `splunk_hosted=false` provenance. This integration strengthens security
 reasoning but is not represented as Splunk-hosted inference.
+
+## Run Cisco Deep Time Series Model
+
+OpsWitness supports the organizer-provided self-hosting path for the official
+Cisco Deep Time Series Model:
+
+```bash
+git clone --depth 1 --filter=blob:none --sparse \
+  https://github.com/splunk/cisco-time-series-model.git
+cd cisco-time-series-model
+git sparse-checkout set serve
+cd serve
+cp .env-example .env
+```
+
+Set a unique `CDTSM_AUTH_TOKEN` in the protected `.env`, then run:
+
+```bash
+docker compose up --build -d
+curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8080/ready
+```
+
+Point OpsWitness at the server with `CDTSM_ENDPOINT` and either
+`CDTSM_AUTH_TOKEN` or `CDTSM_ENV_FILE`. The live drill records the forecast,
+p5/p95 bounds, predicted peak, model provenance, and input source as evidence.
+The server implements Splunk AITK's CDTSM-compatible inference API. When used
+without local AITK, OpsWitness records `serving_mode=self-hosted-aitk-compatible`
+and does not claim that Splunk hosts the endpoint.
 
 ## Install The Splunk App
 

@@ -23,6 +23,7 @@ flowchart LR
     Verify["Approved Detection Verifier"]
     Hosted["Splunk-native Analytics<br/>Optional MLTK Model"]
     FoundationSec["Foundation-Sec Advisory<br/>validated structured output"]
+    CDTSMAdapter["CDTSM Forecast Adapter<br/>zero-shot predictive evidence"]
     KVPolicy["KV Policy Resolver"]
     SOARAdapter["SOAR Approval Adapter"]
     UI["Next.js Incident Room<br/>:3000"]
@@ -37,6 +38,7 @@ flowchart LR
 
   subgraph ExternalModels["External Model Provider"]
     HF["Hugging Face Router<br/>Foundation-Sec"]
+    CDTSM["Self-hosted Cisco Deep Time Series Model<br/>AITK-compatible API"]
   end
 
   subgraph Splunk["Splunk Platform"]
@@ -67,6 +69,9 @@ flowchart LR
   API --> FoundationSec
   FoundationSec --> HF
   FoundationSec --> Normalize
+  API --> CDTSMAdapter
+  CDTSMAdapter --> CDTSM
+  CDTSMAdapter --> Normalize
   API --> Verify
   API --> KVPolicy
   Preflight --> MCP
@@ -245,6 +250,7 @@ sequenceDiagram
   Splunk-->>API: scoped query results
   API->>Splunk: run native anomaly analytics or configured MLTK model
   API->>API: validate Foundation-Sec advisory and cited evidence
+  API->>API: record CDTSM forecast, confidence bounds, and predicted peak
   API->>Policy: execute approved saved search and resolve KV policy
   Policy-->>API: verification and allowed response
   API->>Graph: add ToolCall, SplunkSearch, and SplunkResult nodes
