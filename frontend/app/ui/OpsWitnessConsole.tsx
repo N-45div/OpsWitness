@@ -178,6 +178,11 @@ export function OpsWitnessConsole() {
             ok={status ? status.mcp_proxy.preflight_configured : null}
           />
           <StatusRow label="Slack" ok={status ? status.slack.configured : null} />
+          <StatusRow label="Hosted model" ok={status ? status.hosted_model.configured : null} />
+          <StatusRow
+            label="Splunk SOAR"
+            ok={status ? status.soar.configured && status.soar.reachable : null}
+          />
           <p>HEC acknowledgement mode: {status?.hec.ack_mode ?? "unknown"}</p>
           <p>
             Native anomaly requires live tool:{" "}
@@ -357,7 +362,13 @@ function LiveDrillProgress({
         <div className="drillStages">
           {drill.stages.map((stage) => (
             <div className={`drillStage ${stage.status}`} key={stage.id}>
-              {stage.status === "completed" ? <Check size={15} /> : <X size={15} />}
+              {stage.status === "completed" ? (
+                <Check size={15} />
+              ) : stage.status === "failed" ? (
+                <X size={15} />
+              ) : (
+                <AlertTriangle size={15} />
+              )}
               <span>
                 <strong>{stage.label}</strong>
                 <small>{stage.detail}</small>
@@ -421,6 +432,9 @@ function IncidentOverview({
           </span>
           <span className="slackStatus">
             <MessageSquare size={14} /> Slack: {incident.slack_status}
+          </span>
+          <span className="slackStatus">
+            <ShieldCheck size={14} /> SOAR: {incident.soar_status}
           </span>
           {incident.approval_status === "pending" && (
             <>

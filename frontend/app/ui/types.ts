@@ -72,6 +72,17 @@ export type SplunkStatus = {
   slack: {
     configured: boolean;
   };
+  hosted_model: {
+    configured: boolean;
+    model_name?: string | null;
+    mode?: "mltk_model" | "splunk_native_analytics";
+  };
+  soar: {
+    configured: boolean;
+    reachable: boolean;
+    status_code?: number | null;
+    detail: string;
+  };
   mcp_required_capability: string;
 };
 
@@ -95,6 +106,8 @@ export type IncidentBrief = {
   approval_status: "pending" | "approved" | "rejected";
   slack_status: "not_configured" | "sent" | "failed" | "not_requested";
   slack_detail?: string | null;
+  soar_status: "not_configured" | "executed" | "failed" | "not_requested";
+  soar_detail?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -102,7 +115,7 @@ export type IncidentBrief = {
 export type LiveIncidentDrillStage = {
   id: string;
   label: string;
-  status: "completed" | "failed";
+  status: "completed" | "failed" | "unavailable";
   detail: string;
 };
 

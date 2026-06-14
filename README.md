@@ -34,18 +34,21 @@ OpsWitness MCP proxy
         |
         +--> Splunk HEC evidence index
         |
-        +--> Causal graph and policy analysis
+        +--> Hosted analytics, approved detections, and KV policy
         |
-        +--> Incident Room, Slack brief, human approval
+        +--> Incident Room, Slack brief, human approval, Splunk SOAR
 ```
 
 1. The agent connects to the OpsWitness MCP proxy.
 2. OpsWitness discovers the live tools exposed by Splunk MCP Server.
 3. Real MCP requests and responses are normalized into evidence events.
 4. Evidence is written to Splunk through HEC and persisted locally.
-5. OpsWitness reconstructs the run as a causal graph and evaluates risky paths.
-6. Incident conclusions must cite graph evidence before OpsWitness accepts them.
-7. Remediation proposals remain pending until a human approves or rejects them.
+5. Splunk-native hosted analytics and approved saved searches independently
+   verify the investigation.
+6. Splunk KV Store policy constrains the permitted response.
+7. OpsWitness reconstructs the run as a causal graph and evaluates risky paths.
+8. Remediation proposals remain pending until a human approves or rejects them.
+9. Approved actions execute through Splunk SOAR only when SOAR is configured.
 
 See [architecture_diagram.md](architecture_diagram.md) for the complete component and data flow.
 
@@ -60,8 +63,12 @@ system:
 - **Indexer acknowledgement** can confirm that evidence was indexed before an
   action proceeds.
 - **Splunk Search** independently verifies the evidence shown by OpsWitness.
-- **Native SPL anomaly investigation** detects abnormal error changes without
-  requiring MLTK or hosted models.
+- **Splunk-hosted analytics** executes `anomalydetection` inside Splunk, or an
+  explicitly configured MLTK model through `apply`.
+- **Approved saved searches** independently verify agent-generated conclusions.
+- **KV Store policy** maps services to criticality, allowed actions, and SOAR
+  playbooks.
+- **Splunk SOAR** executes bounded playbooks only after human approval.
 - **Splunk dashboard** provides an independent view of MCP calls, risky
   searches, incidents, and approvals.
 
@@ -79,13 +86,17 @@ independent verification surface.
 - Detection for prompt injection, poisoned tool metadata, broad searches,
   sensitive-index access, raw exports, and long query windows
 - Portable Splunk-native anomaly investigation
+- Splunk-hosted anomaly inference with optional named MLTK model
+- Organization-approved saved-search verification
+- KV Store-backed service and response policy
+- Human-approved Splunk SOAR execution
 - Evidence-cited deployment incident briefs
 - Safe SPL query rewriting
 - Slack incident notifications
 - Human remediation approval workflow
 - One-click live incident drill across HEC, MCP, native SPL, Slack, and approval
 - Interactive Next.js evidence graph and timeline
-- Importable native Splunk dashboard
+- Installable Splunk app with dashboard, KV Store collections, and saved searches
 
 ## Technology
 
@@ -102,7 +113,9 @@ independent verification surface.
 - Node.js 20+
 - A Splunk instance with HTTP Event Collector
 - MCP Server for Splunk Platform and an encrypted MCP token
+- The bundled Splunk app for saved-search and KV policy stages
 - Optional Slack incoming webhook
+- Optional Splunk SOAR endpoint and automation token
 
 ## Installation
 
@@ -137,6 +150,7 @@ SPLUNK_REQUIRE_HEC=true
 
 SPLUNK_MCP_URL=https://<stack>.splunkcloud.com/en-US/splunkd/__raw/services/mcp
 SPLUNK_MCP_BEARER_TOKEN=<encrypted-mcp-token>
+SPLUNK_OPSWITNESS_APP=opswitness
 ```
 
 Useful options:
@@ -146,6 +160,10 @@ SPLUNK_HEC_ACK_MODE=auto
 SPLUNK_HEC_ACK_TIMEOUT_SECONDS=10
 SLACK_WEBHOOK_URL=
 OPSWITNESS_CONSOLE_URL=http://127.0.0.1:3000
+SPLUNK_HOSTED_MODEL_NAME=
+SPLUNK_SOAR_URL=
+SPLUNK_SOAR_TOKEN=
+SPLUNK_SOAR_CONTAINER_ID=
 ```
 
 `SPLUNK_HEC_ACK_MODE` supports:
@@ -155,6 +173,26 @@ OPSWITNESS_CONSOLE_URL=http://127.0.0.1:3000
 - `disabled`: require only HEC acceptance.
 
 Never commit Splunk or Slack credentials.
+
+## Install The Splunk App
+
+Build the installable package:
+
+```bash
+make splunk-app
+```
+
+Upload `dist/opswitness-splunk-app.tgz` from Splunk's **Apps > Manage Apps >
+Install app from file** flow. The package installs:
+
+- Three approved scenario saved searches
+- `opswitness_service_policy`, `opswitness_response_playbooks`, and
+  `opswitness_model_feedback` KV Store collections
+- KV Store lookup definitions
+- The independent OpsWitness Splunk dashboard
+
+Until this app is installed, OpsWitness visibly reports the saved-search or KV
+policy stage as unavailable.
 
 ## Run Locally
 

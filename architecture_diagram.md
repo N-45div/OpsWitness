@@ -20,6 +20,10 @@ flowchart LR
     Policy["NetworkX Policy Analyzer"]
     Explain["Evidence Explainer"]
     Incident["Incident and Approval Service"]
+    Verify["Approved Detection Verifier"]
+    Hosted["Splunk-hosted Analytics"]
+    KVPolicy["KV Policy Resolver"]
+    SOARAdapter["SOAR Approval Adapter"]
     UI["Next.js Incident Room<br/>:3000"]
   end
 
@@ -36,6 +40,10 @@ flowchart LR
     HEC["HTTP Event Collector"]
     Index[("opswitness:event Evidence Index")]
     Dashboard["OpsWitness Splunk Dashboard"]
+    Saved["Approved Saved Searches"]
+    KV[("OpsWitness KV Store")]
+    Models["Native Analytics / MLTK Models"]
+    SOAR["Splunk SOAR"]
   end
 
   Agent --> Proxy
@@ -50,8 +58,17 @@ flowchart LR
 
   API --> Preflight
   API --> Anomaly
+  API --> Hosted
+  API --> Verify
+  API --> KVPolicy
   Preflight --> MCP
   Anomaly --> MCP
+  Hosted --> MCP
+  Verify --> MCP
+  KVPolicy --> MCP
+  MCP --> Saved
+  MCP --> KV
+  MCP --> Models
 
   Proxy --> Normalize
   Preflight --> Normalize
@@ -68,6 +85,8 @@ flowchart LR
   Explain --> Incident
   Incident --> Incidents
   Incident --> Slack
+  Incident --> SOARAdapter
+  SOARAdapter --> SOAR
   Incident --> UI
 
   Index --> Dashboard
@@ -205,6 +224,8 @@ sequenceDiagram
   participant API as OpsWitness API
   participant Graph as Evidence Graph
   participant Splunk as Splunk HEC and Search
+  participant Policy as Splunk KV and Saved Searches
+  participant SOAR as Splunk SOAR
   participant Slack as Slack
   participant Human as Incident Commander
 
@@ -214,6 +235,9 @@ sequenceDiagram
 
   API->>Splunk: investigate operational evidence through MCP
   Splunk-->>API: scoped query results
+  API->>Splunk: run hosted anomaly analytics
+  API->>Policy: execute approved saved search and resolve KV policy
+  Policy-->>API: verification and allowed response
   API->>Graph: add ToolCall, SplunkSearch, and SplunkResult nodes
 
   API->>Graph: validate every cited evidence_node_id
@@ -234,6 +258,8 @@ sequenceDiagram
   alt Approved
     API->>Graph: add APPROVED decision
     API->>Splunk: index human.approval.approved
+    API->>SOAR: run mapped bounded playbook
+    SOAR-->>API: execution result
   else Rejected
     API->>Graph: add REJECTED decision
     API->>Splunk: index human.approval.rejected
