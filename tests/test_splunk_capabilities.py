@@ -32,6 +32,20 @@ def test_native_anomaly_query_rejects_unsafe_identifiers() -> None:
         raise AssertionError("unsafe index identifier was accepted")
 
 
+def test_native_anomaly_queries_change_with_operational_signal() -> None:
+    auth_query = build_native_anomaly_query(
+        SplunkAnomalyRequest(service="auth-gateway", signal="auth_failures")
+    )
+    queue_query = build_native_anomaly_query(
+        SplunkAnomalyRequest(service="order-worker", signal="queue_saturation")
+    )
+
+    assert 'action="login_failed"' in auth_query
+    assert "dc(src_ip) AS source_ips" in auth_query
+    assert "max(queue_depth) AS queue_depth" in queue_query
+    assert "p95(duration_ms) AS p95_latency" in queue_query
+
+
 def test_preflight_and_anomaly_report_unavailable_without_mcp() -> None:
     proxy = MCPProxy(MCPProxyConfig(upstream_url=""))
 

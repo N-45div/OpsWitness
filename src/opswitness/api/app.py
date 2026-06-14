@@ -7,7 +7,7 @@ from typing import Literal
 from uuid import uuid4
 
 import httpx
-from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
@@ -67,15 +67,10 @@ class MCPProxyEnvelope(BaseModel):
 
 
 class LiveIncidentDrillRequest(BaseModel):
-    service: str = "checkout-api"
-    version: str = "2.7.1"
-    index: str = "main"
-    baseline_errors: int = Field(default=10, ge=0)
-    current_errors: int = Field(default=420, ge=0)
-    affected_services: list[str] = Field(
-        default_factory=lambda: ["checkout-api", "payment-service"]
+    scenario: Literal["deployment_regression", "credential_attack", "queue_saturation"] = (
+        "deployment_regression"
     )
-    affected_regions: list[str] = Field(default_factory=lambda: ["us-east-1", "eu-west-1"])
+    index: str = "main"
 
 
 class LiveIncidentDrillStage(BaseModel):
@@ -87,11 +82,63 @@ class LiveIncidentDrillStage(BaseModel):
 
 class LiveIncidentDrillResult(BaseModel):
     status: Literal["completed", "failed"]
+    scenario: str
+    scenario_label: str
     run_id: str
     deployment_id: str
     incident_id: str | None = None
     stages: list[LiveIncidentDrillStage] = Field(default_factory=list)
     incident: IncidentBrief | None = None
+
+
+class LiveIncidentDrillJob(BaseModel):
+    job_id: str
+    status: Literal["queued", "running", "completed", "failed"]
+    result: LiveIncidentDrillResult | None = None
+
+
+LIVE_DRILL_SCENARIOS = {
+    "deployment_regression": {
+        "label": "Checkout deployment regression",
+        "service": "checkout-api",
+        "version": "2.7.1",
+        "signal": "error_spike",
+        "baseline": 10,
+        "current": 420,
+        "services": ["checkout-api", "payment-service"],
+        "regions": ["us-east-1", "eu-west-1"],
+        "title": "Checkout deployment regression",
+        "cause": "Checkout release 2.7.1 correlates with a sharp increase in server errors.",
+        "action": "Validate and approve a scoped rollback of checkout-api 2.7.1",
+    },
+    "credential_attack": {
+        "label": "Credential-stuffing attack",
+        "service": "auth-gateway",
+        "version": "security-policy-14",
+        "signal": "auth_failures",
+        "baseline": 18,
+        "current": 970,
+        "services": ["auth-gateway", "identity-service"],
+        "regions": ["us-east-1", "ap-southeast-1"],
+        "title": "Credential-stuffing attack against authentication",
+        "cause": "A distributed burst of failed logins and unauthorized responses indicates credential stuffing.",
+        "action": "Approve temporary source throttling and force step-up authentication",
+    },
+    "queue_saturation": {
+        "label": "Order queue saturation",
+        "service": "order-worker",
+        "version": "worker-5.4.0",
+        "signal": "queue_saturation",
+        "baseline": 35,
+        "current": 680,
+        "services": ["order-worker", "fulfillment-api"],
+        "regions": ["us-west-2"],
+        "title": "Order processing queue saturation",
+        "cause": "Queue depth and p95 processing latency rose together after worker throughput degraded.",
+        "action": "Approve a bounded worker scale-out and inspect the slow consumer group",
+    },
+}
+LIVE_DRILL_JOBS: dict[str, LiveIncidentDrillJob] = {}
 
 
 def splunk_client() -> SplunkHECClient:
@@ -326,8 +373,9 @@ async def run_live_incident_drill(
     request: LiveIncidentDrillRequest | None = None,
 ) -> LiveIncidentDrillResult:
     drill = request or LiveIncidentDrillRequest()
+    scenario = LIVE_DRILL_SCENARIOS[drill.scenario]
     suffix = uuid4().hex[:10]
-    run_id = f"live-drill-{suffix}"
+    run_id = f"{drill.scenario}-{suffix}"
     deployment_id = f"deploy-{suffix}"
     stages: list[LiveIncidentDrillStage] = []
 
@@ -340,6 +388,8 @@ async def run_live_incident_drill(
         stages.append(LiveIncidentDrillStage(id=stage_id, label=label, status="failed", detail=detail))
         return LiveIncidentDrillResult(
             status="failed",
+            scenario=drill.scenario,
+            scenario_label=scenario["label"],
             run_id=run_id,
             deployment_id=deployment_id,
             stages=stages,
@@ -380,8 +430,9 @@ async def run_live_incident_drill(
         anomaly = await run_native_anomaly_investigation(
             mcp_proxy(),
             SplunkAnomalyRequest(
-                service=drill.service,
+                service=scenario["service"],
                 index=drill.index,
+                signal=scenario["signal"],
                 run_id=run_id,
                 execute=True,
             ),
@@ -398,8 +449,8 @@ async def run_live_incident_drill(
         deployment = await record_deployment(
             DeploymentRecord(
                 deployment_id=deployment_id,
-                service=drill.service,
-                version=drill.version,
+                service=scenario["service"],
+                version=scenario["version"],
                 run_id=run_id,
                 agent_id="live-drill-deployment",
             )
@@ -422,15 +473,17 @@ async def run_live_incident_drill(
             IncidentBriefRequest(
                 run_id=run_id,
                 deployment_id=deployment_id,
-                service=drill.service,
-                version=drill.version,
-                baseline_errors=drill.baseline_errors,
-                current_errors=drill.current_errors,
-                affected_services=drill.affected_services,
-                affected_regions=drill.affected_regions,
+                service=scenario["service"],
+                version=scenario["version"],
+                baseline_errors=scenario["baseline"],
+                current_errors=scenario["current"],
+                affected_services=scenario["services"],
+                affected_regions=scenario["regions"],
                 evidence_node_ids=evidence_node_ids,
                 unsafe_query="search index=* earliest=-7d | table _raw user action",
-                proposed_action="Validate and approve a scoped rollback of the implicated deployment",
+                title=scenario["title"],
+                probable_cause=scenario["cause"],
+                proposed_action=scenario["action"],
                 agent_id="live-drill-investigator",
                 notify_slack=True,
             )
@@ -458,12 +511,42 @@ async def run_live_incident_drill(
     )
     return LiveIncidentDrillResult(
         status="completed",
+        scenario=drill.scenario,
+        scenario_label=scenario["label"],
         run_id=run_id,
         deployment_id=deployment_id,
         incident_id=incident.incident_id,
         stages=stages,
         incident=incident,
     )
+
+
+async def execute_live_incident_drill_job(job_id: str, request: LiveIncidentDrillRequest) -> None:
+    LIVE_DRILL_JOBS[job_id].status = "running"
+    result = await run_live_incident_drill(request)
+    LIVE_DRILL_JOBS[job_id].result = result
+    LIVE_DRILL_JOBS[job_id].status = result.status
+
+
+@app.post("/drills/live-incident/jobs")
+async def start_live_incident_drill_job(
+    background_tasks: BackgroundTasks,
+    request: LiveIncidentDrillRequest | None = None,
+) -> LiveIncidentDrillJob:
+    job_id = f"drill-job-{uuid4().hex[:12]}"
+    drill_request = request or LiveIncidentDrillRequest()
+    job = LiveIncidentDrillJob(job_id=job_id, status="queued")
+    LIVE_DRILL_JOBS[job_id] = job
+    background_tasks.add_task(execute_live_incident_drill_job, job_id, drill_request)
+    return job
+
+
+@app.get("/drills/live-incident/jobs/{job_id}")
+def get_live_incident_drill_job(job_id: str) -> LiveIncidentDrillJob:
+    try:
+        return LIVE_DRILL_JOBS[job_id]
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="drill job not found") from exc
 
 
 @app.post("/integrations/deployments")

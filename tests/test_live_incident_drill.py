@@ -103,6 +103,7 @@ async def test_live_drill_runs_real_integration_pipeline(monkeypatch, tmp_path: 
 
     assert response.status_code == 200
     assert result["status"] == "completed"
+    assert result["scenario"] == "deployment_regression"
     assert [stage["id"] for stage in result["stages"]] == [
         "hec",
         "mcp",
@@ -142,3 +143,69 @@ async def test_live_drill_fails_visibly_without_hec(monkeypatch, tmp_path: Path)
     assert result["stages"][0]["id"] == "hec"
     assert result["stages"][0]["status"] == "failed"
     assert not api_module.GRAPH_STORE.list()
+
+
+@pytest.mark.anyio
+async def test_unknown_live_drill_job_returns_not_found() -> None:
+    response = await request(api_module.app, "GET", "/drills/live-incident/jobs/missing")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "drill job not found"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("scenario", "service", "title"),
+    [
+        ("credential_attack", "auth-gateway", "Credential-stuffing attack against authentication"),
+        ("queue_saturation", "order-worker", "Order processing queue saturation"),
+    ],
+)
+async def test_live_drill_supports_distinct_scenarios(
+    monkeypatch,
+    tmp_path: Path,
+    scenario: str,
+    service: str,
+    title: str,
+) -> None:
+    configure_stores(monkeypatch, tmp_path)
+    monkeypatch.setenv("SPLUNK_MCP_URL", "https://splunk.example/mcp")
+    monkeypatch.setenv("SPLUNK_MCP_BEARER_TOKEN", "test-token")
+    monkeypatch.setattr(api_module, "splunk_client", lambda: FakeHEC())
+    monkeypatch.setattr(api_module, "slack_notifier", lambda: FakeSlack())
+
+    async def fake_preflight(proxy, run_id):
+        return (
+            SplunkMCPPreflight(
+                status="ready",
+                run_id=run_id,
+                available_tools=["splunk_run_query"],
+                anomaly_query_supported=True,
+            ),
+            [],
+        )
+
+    async def fake_anomaly(proxy, anomaly_request):
+        assert anomaly_request.service == service
+        return SplunkAnomalyResult(
+            status="executed",
+            run_id=anomaly_request.run_id,
+            query="search index=main",
+            detail="Executed scenario SPL.",
+            events=[],
+        )
+
+    monkeypatch.setattr(api_module, "run_mcp_preflight", fake_preflight)
+    monkeypatch.setattr(api_module, "run_native_anomaly_investigation", fake_anomaly)
+
+    response = await request(
+        api_module.app,
+        "POST",
+        "/drills/live-incident",
+        json={"scenario": scenario},
+    )
+    result = response.json()
+
+    assert result["status"] == "completed"
+    assert result["scenario"] == scenario
+    assert result["incident"]["title"] == title

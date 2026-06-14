@@ -39,9 +39,10 @@ def build_incident_brief(request: IncidentBriefRequest) -> IncidentBrief:
         incident_id=f"inc-{uuid4().hex[:10]}",
         run_id=request.run_id,
         deployment_id=request.deployment_id,
-        title=f"{request.service} deployment regression",
+        title=request.title or f"{request.service} deployment regression",
         severity=severity,
-        probable_cause=(
+        probable_cause=request.probable_cause
+        or (
             f"Deployment {request.deployment_id} of {request.service} {request.version} "
             f"correlates with a {multiplier}x increase in errors."
         ),
@@ -78,4 +79,3 @@ def _severity(multiplier: float, current_errors: int) -> str:
     if multiplier >= 2 or current_errors >= 100:
         return "medium"
     return "low"
-

@@ -34,6 +34,7 @@ class SplunkAnomalyRequest(BaseModel):
     index: str = "main"
     service_field: str = "service"
     earliest: str = "-60m"
+    signal: Literal["error_spike", "auth_failures", "queue_saturation"] = "error_spike"
     run_id: str | None = None
     execute: bool = True
 
@@ -195,9 +196,32 @@ def build_native_anomaly_query(request: SplunkAnomalyRequest) -> str:
     service_field = _safe_identifier(request.service_field, "service_field")
     earliest = _safe_earliest(request.earliest)
     service = request.service.replace("\\", "\\\\").replace('"', '\\"')
+    prefix = f'search index={index} earliest={earliest} {service_field}="{service}" '
+    if request.signal == "auth_failures":
+        return (
+            prefix
+            + '(action="login_failed" OR status=401 OR status=403) '
+            "| bin _time span=5m "
+            "| stats count AS failures dc(src_ip) AS source_ips by _time "
+            "| eventstats avg(failures) AS baseline stdev(failures) AS sigma "
+            "| eval anomaly=if(failures > baseline + (2*sigma), 1, 0) "
+            "| where anomaly=1 "
+            "| sort - _time"
+        )
+    if request.signal == "queue_saturation":
+        return (
+            prefix
+            + "(queue_depth>0 OR duration_ms>0) "
+            "| bin _time span=5m "
+            "| stats max(queue_depth) AS queue_depth p95(duration_ms) AS p95_latency by _time "
+            "| eventstats avg(queue_depth) AS baseline stdev(queue_depth) AS sigma "
+            "| eval anomaly=if(queue_depth > baseline + (2*sigma), 1, 0) "
+            "| where anomaly=1 "
+            "| sort - _time"
+        )
     return (
-        f'search index={index} earliest={earliest} {service_field}="{service}" '
-        '(level="error" OR status>=500) '
+        prefix
+        + '(level="error" OR status>=500) '
         "| bin _time span=5m "
         "| stats count AS errors by _time "
         "| eventstats avg(errors) AS baseline stdev(errors) AS sigma "

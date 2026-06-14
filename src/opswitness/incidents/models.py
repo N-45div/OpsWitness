@@ -28,6 +28,8 @@ class IncidentBriefRequest(BaseModel):
     affected_regions: list[str] = Field(default_factory=list)
     evidence_node_ids: list[str] = Field(min_length=1)
     unsafe_query: str | None = None
+    title: str | None = None
+    probable_cause: str | None = None
     proposed_action: str = "Run a scoped follow-up investigation"
     agent_id: str = "incident-investigator"
     notify_slack: bool = True
@@ -61,4 +63,3 @@ class ApprovalRequest(BaseModel):
     decision: Literal["approved", "rejected"]
     approver: str
     reason: str | None = None
-
