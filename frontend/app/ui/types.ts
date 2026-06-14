@@ -75,7 +75,13 @@ export type SplunkStatus = {
   hosted_model: {
     configured: boolean;
     model_name?: string | null;
-    mode?: "mltk_model" | "splunk_native_analytics";
+    mode?: "mltk_model" | "unavailable";
+  };
+  foundation_sec: {
+    configured: boolean;
+    model_name: string;
+    provider: string;
+    splunk_hosted: false;
   };
   soar: {
     configured: boolean;

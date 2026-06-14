@@ -21,7 +21,8 @@ flowchart LR
     Explain["Evidence Explainer"]
     Incident["Incident and Approval Service"]
     Verify["Approved Detection Verifier"]
-    Hosted["Splunk-hosted Analytics"]
+    Hosted["Splunk-native Analytics<br/>Optional MLTK Model"]
+    FoundationSec["Foundation-Sec Advisory<br/>validated structured output"]
     KVPolicy["KV Policy Resolver"]
     SOARAdapter["SOAR Approval Adapter"]
     UI["Next.js Incident Room<br/>:3000"]
@@ -32,6 +33,10 @@ flowchart LR
     Graphs[("JSON Graph Store")]
     Incidents[("JSON Incident Store")]
     Kuzu[("Optional Kuzu Graph Store")]
+  end
+
+  subgraph ExternalModels["External Model Provider"]
+    HF["Hugging Face Router<br/>Foundation-Sec"]
   end
 
   subgraph Splunk["Splunk Platform"]
@@ -59,6 +64,9 @@ flowchart LR
   API --> Preflight
   API --> Anomaly
   API --> Hosted
+  API --> FoundationSec
+  FoundationSec --> HF
+  FoundationSec --> Normalize
   API --> Verify
   API --> KVPolicy
   Preflight --> MCP
@@ -235,7 +243,8 @@ sequenceDiagram
 
   API->>Splunk: investigate operational evidence through MCP
   Splunk-->>API: scoped query results
-  API->>Splunk: run hosted anomaly analytics
+  API->>Splunk: run native anomaly analytics or configured MLTK model
+  API->>API: validate Foundation-Sec advisory and cited evidence
   API->>Policy: execute approved saved search and resolve KV policy
   Policy-->>API: verification and allowed response
   API->>Graph: add ToolCall, SplunkSearch, and SplunkResult nodes

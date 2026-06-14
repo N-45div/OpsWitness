@@ -36,6 +36,8 @@ OpsWitness MCP proxy
         |
         +--> Hosted analytics, approved detections, and KV policy
         |
+        +--> Foundation-Sec advisory reasoning via Hugging Face
+        |
         +--> Incident Room, Slack brief, human approval, Splunk SOAR
 ```
 
@@ -43,12 +45,14 @@ OpsWitness MCP proxy
 2. OpsWitness discovers the live tools exposed by Splunk MCP Server.
 3. Real MCP requests and responses are normalized into evidence events.
 4. Evidence is written to Splunk through HEC and persisted locally.
-5. Splunk-native hosted analytics and approved saved searches independently
-   verify the investigation.
-6. Splunk KV Store policy constrains the permitted response.
-7. OpsWitness reconstructs the run as a causal graph and evaluates risky paths.
-8. Remediation proposals remain pending until a human approves or rejects them.
-9. Approved actions execute through Splunk SOAR only when SOAR is configured.
+5. Splunk-native analytics and approved saved searches independently verify
+   the investigation.
+6. Foundation-Sec optionally produces a validated, advisory-only security
+   assessment from cited evidence.
+7. Splunk KV Store policy constrains the permitted response.
+8. OpsWitness reconstructs the run as a causal graph and evaluates risky paths.
+9. Remediation proposals remain pending until a human approves or rejects them.
+10. Approved actions execute through Splunk SOAR only when SOAR is configured.
 
 See [architecture_diagram.md](architecture_diagram.md) for the complete component and data flow.
 
@@ -63,8 +67,8 @@ system:
 - **Indexer acknowledgement** can confirm that evidence was indexed before an
   action proceeds.
 - **Splunk Search** independently verifies the evidence shown by OpsWitness.
-- **Splunk-hosted analytics** executes `anomalydetection` inside Splunk, or an
-  explicitly configured MLTK model through `apply`.
+- **Splunk-native analytics** executes `anomalydetection` inside Splunk. An
+  explicitly configured MLTK model can be executed through `apply`.
 - **Approved saved searches** independently verify agent-generated conclusions.
 - **KV Store policy** maps services to criticality, allowed actions, and SOAR
   playbooks.
@@ -86,7 +90,8 @@ independent verification surface.
 - Detection for prompt injection, poisoned tool metadata, broad searches,
   sensitive-index access, raw exports, and long query windows
 - Portable Splunk-native anomaly investigation
-- Splunk-hosted anomaly inference with optional named MLTK model
+- Splunk-native anomaly inference with optional named MLTK model
+- Validated Foundation-Sec advisory reasoning with cited-evidence filtering
 - Organization-approved saved-search verification
 - KV Store-backed service and response policy
 - Human-approved Splunk SOAR execution
@@ -116,6 +121,7 @@ independent verification surface.
 - The bundled Splunk app for saved-search and KV policy stages
 - Optional Slack incoming webhook
 - Optional Splunk SOAR endpoint and automation token
+- Optional Hugging Face token for Foundation-Sec advisory reasoning
 
 ## Installation
 
@@ -161,6 +167,7 @@ SPLUNK_HEC_ACK_TIMEOUT_SECONDS=10
 SLACK_WEBHOOK_URL=
 OPSWITNESS_CONSOLE_URL=http://127.0.0.1:3000
 SPLUNK_HOSTED_MODEL_NAME=
+FOUNDATION_SEC_API_KEY=
 SPLUNK_SOAR_URL=
 SPLUNK_SOAR_TOKEN=
 SPLUNK_SOAR_CONTAINER_ID=
@@ -173,6 +180,11 @@ SPLUNK_SOAR_CONTAINER_ID=
 - `disabled`: require only HEC acceptance.
 
 Never commit Splunk or Slack credentials.
+
+Foundation-Sec is served through the Hugging Face router in the optional
+advisory stage. OpsWitness records its provider, model, citations, and
+`splunk_hosted=false` provenance. This integration strengthens security
+reasoning but is not represented as Splunk-hosted inference.
 
 ## Install The Splunk App
 

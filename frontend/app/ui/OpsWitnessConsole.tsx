@@ -178,7 +178,14 @@ export function OpsWitnessConsole() {
             ok={status ? status.mcp_proxy.preflight_configured : null}
           />
           <StatusRow label="Slack" ok={status ? status.slack.configured : null} />
-          <StatusRow label="Hosted model" ok={status ? status.hosted_model.configured : null} />
+          <StatusRow
+            label="Splunk-hosted model"
+            ok={status ? status.hosted_model.configured : null}
+          />
+          <StatusRow
+            label="Foundation-Sec advisory"
+            ok={status ? status.foundation_sec.configured : null}
+          />
           <StatusRow
             label="Splunk SOAR"
             ok={status ? status.soar.configured && status.soar.reachable : null}
