@@ -47,6 +47,8 @@ def test_incident_brief_cites_evidence_and_scores_impact() -> None:
 @pytest.mark.anyio
 async def test_incident_api_rejects_missing_evidence(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("SPLUNK_REQUIRE_HEC", "false")
+    monkeypatch.delenv("SPLUNK_HEC_URL", raising=False)
+    monkeypatch.delenv("SPLUNK_HEC_TOKEN", raising=False)
     monkeypatch.setattr(api_module, "EVENT_STORE", JsonEventStore(tmp_path / "events"))
     monkeypatch.setattr(api_module, "GRAPH_STORE", JsonGraphStore(tmp_path / "graphs"))
     monkeypatch.setattr(api_module, "INCIDENT_STORE", IncidentStore(tmp_path / "incidents"))
@@ -86,6 +88,8 @@ async def test_incident_api_rejects_missing_evidence(monkeypatch, tmp_path: Path
 @pytest.mark.anyio
 async def test_incident_api_builds_graph_and_records_approval(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("SPLUNK_REQUIRE_HEC", "false")
+    monkeypatch.delenv("SPLUNK_HEC_URL", raising=False)
+    monkeypatch.delenv("SPLUNK_HEC_TOKEN", raising=False)
     monkeypatch.setattr(api_module, "EVENT_STORE", JsonEventStore(tmp_path / "events"))
     monkeypatch.setattr(api_module, "GRAPH_STORE", JsonGraphStore(tmp_path / "graphs"))
     monkeypatch.setattr(api_module, "INCIDENT_STORE", IncidentStore(tmp_path / "incidents"))

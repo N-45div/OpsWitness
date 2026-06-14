@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 import httpx
@@ -63,6 +64,34 @@ class MCPProxyEnvelope(BaseModel):
     session_id: str | None = None
     agent_id: str = "mcp-agent"
     headers: dict[str, str] = Field(default_factory=dict)
+
+
+class LiveIncidentDrillRequest(BaseModel):
+    service: str = "checkout-api"
+    version: str = "2.7.1"
+    index: str = "main"
+    baseline_errors: int = Field(default=10, ge=0)
+    current_errors: int = Field(default=420, ge=0)
+    affected_services: list[str] = Field(
+        default_factory=lambda: ["checkout-api", "payment-service"]
+    )
+    affected_regions: list[str] = Field(default_factory=lambda: ["us-east-1", "eu-west-1"])
+
+
+class LiveIncidentDrillStage(BaseModel):
+    id: str
+    label: str
+    status: Literal["completed", "failed"]
+    detail: str
+
+
+class LiveIncidentDrillResult(BaseModel):
+    status: Literal["completed", "failed"]
+    run_id: str
+    deployment_id: str
+    incident_id: str | None = None
+    stages: list[LiveIncidentDrillStage] = Field(default_factory=list)
+    incident: IncidentBrief | None = None
 
 
 def splunk_client() -> SplunkHECClient:
@@ -290,6 +319,151 @@ async def splunk_anomaly_investigation(request: SplunkAnomalyRequest) -> dict:
     if result.events:
         await persist_events(result.events)
     return result.model_dump()
+
+
+@app.post("/drills/live-incident")
+async def run_live_incident_drill(
+    request: LiveIncidentDrillRequest | None = None,
+) -> LiveIncidentDrillResult:
+    drill = request or LiveIncidentDrillRequest()
+    suffix = uuid4().hex[:10]
+    run_id = f"live-drill-{suffix}"
+    deployment_id = f"deploy-{suffix}"
+    stages: list[LiveIncidentDrillStage] = []
+
+    def complete(stage_id: str, label: str, detail: str) -> None:
+        stages.append(
+            LiveIncidentDrillStage(id=stage_id, label=label, status="completed", detail=detail)
+        )
+
+    def fail(stage_id: str, label: str, detail: str) -> LiveIncidentDrillResult:
+        stages.append(LiveIncidentDrillStage(id=stage_id, label=label, status="failed", detail=detail))
+        return LiveIncidentDrillResult(
+            status="failed",
+            run_id=run_id,
+            deployment_id=deployment_id,
+            stages=stages,
+        )
+
+    try:
+        hec = require_evidence_sink()
+    except HTTPException as exc:
+        return fail("hec", "Splunk HEC evidence sink", str(exc.detail))
+    hec_health = await hec.health()
+    if not hec_health.configured or not hec_health.reachable:
+        return fail("hec", "Splunk HEC evidence sink", hec_health.detail)
+    if not mcp_proxy().config.enabled:
+        return fail("mcp", "Splunk MCP capability preflight", "Splunk MCP is not configured.")
+    if not slack_notifier().configured:
+        return fail("slack", "Slack incident notification", "Slack webhook is not configured.")
+    complete("hec", "Splunk HEC evidence sink", f"Reachable with acknowledgement mode {hec.config.ack_mode}.")
+
+    try:
+        preflight, preflight_events = await run_mcp_preflight(mcp_proxy(), run_id=run_id)
+        if preflight_events:
+            await persist_events(preflight_events)
+    except (RuntimeError, httpx.HTTPError, HTTPException) as exc:
+        return fail("mcp", "Splunk MCP capability preflight", str(exc))
+    if preflight.status == "unavailable" or not preflight.anomaly_query_supported:
+        return fail(
+            "mcp",
+            "Splunk MCP capability preflight",
+            "Splunk MCP did not advertise the required splunk_run_query tool.",
+        )
+    complete(
+        "mcp",
+        "Splunk MCP capability preflight",
+        f"Discovered {len(preflight.available_tools)} tools; splunk_run_query is available.",
+    )
+
+    try:
+        anomaly = await run_native_anomaly_investigation(
+            mcp_proxy(),
+            SplunkAnomalyRequest(
+                service=drill.service,
+                index=drill.index,
+                run_id=run_id,
+                execute=True,
+            ),
+        )
+        if anomaly.events:
+            await persist_events(anomaly.events)
+    except (RuntimeError, ValueError, httpx.HTTPError, HTTPException) as exc:
+        return fail("spl", "Native SPL investigation", str(exc))
+    if anomaly.status != "executed":
+        return fail("spl", "Native SPL investigation", anomaly.detail)
+    complete("spl", "Native SPL investigation", anomaly.detail)
+
+    try:
+        deployment = await record_deployment(
+            DeploymentRecord(
+                deployment_id=deployment_id,
+                service=drill.service,
+                version=drill.version,
+                run_id=run_id,
+                agent_id="live-drill-deployment",
+            )
+        )
+    except (RuntimeError, httpx.HTTPError, HTTPException) as exc:
+        return fail("deployment", "Deployment evidence", str(exc))
+    complete(
+        "deployment",
+        "Deployment evidence",
+        f"Recorded trusted deployment node {deployment['deployment_node_id']}.",
+    )
+
+    graph = get_run(run_id)
+    evidence_node_ids = [
+        node.id for node in graph.nodes if node.type in {"ToolCall", "ToolResult"}
+    ][-4:]
+    evidence_node_ids.append(deployment["deployment_node_id"])
+    try:
+        incident = await create_incident(
+            IncidentBriefRequest(
+                run_id=run_id,
+                deployment_id=deployment_id,
+                service=drill.service,
+                version=drill.version,
+                baseline_errors=drill.baseline_errors,
+                current_errors=drill.current_errors,
+                affected_services=drill.affected_services,
+                affected_regions=drill.affected_regions,
+                evidence_node_ids=evidence_node_ids,
+                unsafe_query="search index=* earliest=-7d | table _raw user action",
+                proposed_action="Validate and approve a scoped rollback of the implicated deployment",
+                agent_id="live-drill-investigator",
+                notify_slack=True,
+            )
+        )
+    except (RuntimeError, httpx.HTTPError, HTTPException) as exc:
+        return fail("incident", "Evidence-cited incident", str(exc))
+    if incident.slack_status != "sent":
+        return fail(
+            "slack",
+            "Slack incident notification",
+            incident.slack_detail or f"Slack delivery status was {incident.slack_status}.",
+        )
+    complete(
+        "incident",
+        "Evidence-cited incident",
+        f"Created {incident.incident_id} with {len(incident.evidence_node_ids)} citations.",
+    )
+    complete("slack", "Slack incident notification", "Delivered the incident brief to Slack.")
+
+    final_graph = get_run(run_id)
+    complete(
+        "graph",
+        "Causal evidence graph",
+        f"Built {len(final_graph.nodes)} nodes and {len(final_graph.edges)} edges; approval is pending.",
+    )
+    return LiveIncidentDrillResult(
+        status="completed",
+        run_id=run_id,
+        deployment_id=deployment_id,
+        incident_id=incident.incident_id,
+        stages=stages,
+        incident=incident,
+    )
 
 
 @app.post("/integrations/deployments")
