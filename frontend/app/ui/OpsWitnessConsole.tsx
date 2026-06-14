@@ -31,12 +31,18 @@ import type {
   GraphNode,
   IncidentBrief,
   LiveIncidentDrillResult,
+  LiveIncidentDrillScenario,
   RunGraph,
   RunSummary,
   SplunkStatus
 } from "./types";
 
 const severityRank = { none: 0, low: 1, medium: 2, high: 3, critical: 4 };
+const drillScenarios: { value: LiveIncidentDrillScenario; label: string }[] = [
+  { value: "deployment_regression", label: "Checkout regression" },
+  { value: "credential_attack", label: "Credential attack" },
+  { value: "queue_saturation", label: "Queue saturation" }
+];
 
 export function OpsWitnessConsole() {
   const [runs, setRuns] = useState<RunSummary[]>([]);
@@ -51,6 +57,8 @@ export function OpsWitnessConsole() {
   const [incidents, setIncidents] = useState<IncidentBrief[]>([]);
   const [drill, setDrill] = useState<LiveIncidentDrillResult | null>(null);
   const [drillRunning, setDrillRunning] = useState(false);
+  const [drillScenario, setDrillScenario] =
+    useState<LiveIncidentDrillScenario>("deployment_regression");
 
   const loadRun = useCallback(async (runId: string) => {
     const [graph, spl] = await Promise.all([getRun(runId), getRunSpl(runId)]);
@@ -115,11 +123,16 @@ export function OpsWitnessConsole() {
     setDrill(null);
     setError(null);
     try {
-      const result = await runLiveIncidentDrill();
+      const result = await runLiveIncidentDrill(drillScenario);
       setDrill(result);
       await refresh(result.run_id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not run the live incident drill");
+      await refresh();
+      setError(
+        err instanceof Error
+          ? `Drill connection interrupted: ${err.message}. Existing completed runs were refreshed.`
+          : "Could not run the live incident drill"
+      );
     } finally {
       setDrillRunning(false);
     }
@@ -212,6 +225,20 @@ export function OpsWitnessConsole() {
             </span>
           </div>
           <div className="toolbar">
+            <label className="scenarioPicker">
+              <span>Scenario</span>
+              <select
+                value={drillScenario}
+                disabled={drillRunning}
+                onChange={(event) => setDrillScenario(event.target.value as LiveIncidentDrillScenario)}
+              >
+                {drillScenarios.map((scenario) => (
+                  <option key={scenario.value} value={scenario.value}>
+                    {scenario.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button className="primaryAction" onClick={startLiveIncidentDrill} disabled={drillRunning || loading}>
               {drillRunning ? <LoaderCircle className="spin" size={16} /> : <Play size={16} />}
               {drillRunning ? "Running live drill" : "Run live incident drill"}
@@ -318,7 +345,11 @@ function LiveDrillProgress({
       <div className="drillProgressHeading">
         <div>
           <span>Real integrations only</span>
-          <strong>{running ? "Executing live incident pipeline" : `Live pipeline ${drill?.status}`}</strong>
+          <strong>
+            {running
+              ? "Executing live incident pipeline"
+              : `${drill?.scenario_label ?? "Live pipeline"} ${drill?.status}`}
+          </strong>
         </div>
         {running ? <LoaderCircle className="spin" size={20} /> : drill?.status === "completed" ? <Check size={20} /> : <X size={20} />}
       </div>

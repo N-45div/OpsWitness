@@ -177,6 +177,12 @@ end. OpsWitness fails visibly at the exact unavailable stage and never replaces
 it with sample data. A successful run loads its evidence graph and leaves the
 proposed remediation pending for a human approval or rejection.
 
+The console includes three live investigation scenarios:
+
+- Checkout deployment regression using error-spike SPL
+- Credential-stuffing attack using authentication-failure SPL
+- Order queue saturation using queue-depth and p95-latency SPL
+
 ## Connect An MCP Client
 
 Configure an MCP-capable AI client to connect through OpsWitness:
@@ -252,6 +258,8 @@ index=opswitness sourcetype=opswitness:event event_type="splunk.search.generated
 | `POST` | `/splunk/mcp/preflight` | Discover and safely call MCP metadata tools |
 | `POST` | `/splunk/anomaly-investigation` | Generate or execute native anomaly SPL |
 | `POST` | `/drills/live-incident` | Run the fail-closed live incident pipeline |
+| `POST` | `/drills/live-incident/jobs` | Start a non-blocking live drill job |
+| `GET` | `/drills/live-incident/jobs/{job_id}` | Poll live drill progress and result |
 | `POST` | `/integrations/deployments` | Record deployment context |
 | `POST` | `/incidents` | Create an evidence-cited incident |
 | `POST` | `/incidents/{incident_id}/approval` | Approve or reject remediation |

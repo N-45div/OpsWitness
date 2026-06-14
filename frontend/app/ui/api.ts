@@ -1,4 +1,12 @@
-import type { IncidentBrief, LiveIncidentDrillResult, RunGraph, RunSummary, SplunkStatus } from "./types";
+import type {
+  IncidentBrief,
+  LiveIncidentDrillJob,
+  LiveIncidentDrillResult,
+  LiveIncidentDrillScenario,
+  RunGraph,
+  RunSummary,
+  SplunkStatus
+} from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
 
@@ -49,11 +57,26 @@ export function decideIncident(
   });
 }
 
-export function runLiveIncidentDrill() {
-  return request<LiveIncidentDrillResult>("/drills/live-incident", {
+export function runLiveIncidentDrill(scenario: LiveIncidentDrillScenario) {
+  return startLiveIncidentDrill(scenario).then(pollLiveIncidentDrill);
+}
+
+function startLiveIncidentDrill(scenario: LiveIncidentDrillScenario) {
+  return request<LiveIncidentDrillJob>("/drills/live-incident/jobs", {
     method: "POST",
-    body: JSON.stringify({})
+    body: JSON.stringify({ scenario })
   });
+}
+
+async function pollLiveIncidentDrill(job: LiveIncidentDrillJob): Promise<LiveIncidentDrillResult> {
+  const deadline = Date.now() + 180_000;
+  let current = job;
+  while (Date.now() < deadline) {
+    if (current.result) return current.result;
+    await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    current = await request<LiveIncidentDrillJob>(`/drills/live-incident/jobs/${job.job_id}`);
+  }
+  throw new Error("Live drill exceeded the three-minute execution window");
 }
 
 export function apiBase() {

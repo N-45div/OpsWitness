@@ -108,9 +108,22 @@ export type LiveIncidentDrillStage = {
 
 export type LiveIncidentDrillResult = {
   status: "completed" | "failed";
+  scenario: LiveIncidentDrillScenario;
+  scenario_label: string;
   run_id: string;
   deployment_id: string;
   incident_id?: string | null;
   stages: LiveIncidentDrillStage[];
   incident?: IncidentBrief | null;
+};
+
+export type LiveIncidentDrillScenario =
+  | "deployment_regression"
+  | "credential_attack"
+  | "queue_saturation";
+
+export type LiveIncidentDrillJob = {
+  job_id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  result?: LiveIncidentDrillResult | null;
 };
