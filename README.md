@@ -47,13 +47,14 @@ OpsWitness MCP proxy
 2. OpsWitness discovers the live tools exposed by Splunk MCP Server.
 3. Real MCP requests and responses are normalized into evidence events.
 4. Evidence is written to Splunk through HEC and persisted locally.
-5. Splunk-native analytics and approved saved searches independently verify
-   the investigation.
+5. Splunk AI Toolkit analytics execute through MCP; optional approved saved
+   searches independently verify the investigation when installed.
 6. Foundation-Sec optionally produces a validated, advisory-only security
    assessment from cited evidence.
 7. The organizer-supported Cisco Deep Time Series Model optionally produces a
    zero-shot predictive forecast with confidence bounds.
-8. Splunk KV Store policy constrains the permitted response.
+8. Optional Splunk KV Store policy constrains the permitted response when
+   installed.
 9. OpsWitness reconstructs the run as a causal graph and evaluates risky paths.
 10. Remediation proposals remain pending until a human approves or rejects them.
 
@@ -73,8 +74,10 @@ system:
 - **Splunk AI Toolkit** is discovered through MCP. The connected hackathon
   stack exposed 45 algorithms; OpsWitness selected and executed
   `DensityFunction` through `splunk_run_query`.
-- **Approved saved searches** independently verify agent-generated conclusions.
-- **KV Store policy** maps services to criticality and allowed response actions.
+- **Approved saved searches** independently verify agent-generated conclusions
+  when the bundled Splunk app is installed.
+- **KV Store policy** maps services to criticality and allowed response actions
+  when the bundled Splunk app is installed.
 - **Splunk dashboard** provides an independent view of MCP calls, risky
   searches, incidents, and approvals.
 
@@ -96,8 +99,8 @@ independent verification surface.
 - Splunk AITK `DensityFunction` inference over real HEC evidence volume
 - Validated Foundation-Sec advisory reasoning with cited-evidence filtering
 - Self-hosted Cisco Deep Time Series Model zero-shot forecasting
-- Organization-approved saved-search verification
-- KV Store-backed service and response policy
+- Fail-closed organization-approved saved-search verification
+- Fail-closed KV Store-backed service and response policy
 - Evidence-cited deployment incident briefs
 - Safe SPL query rewriting
 - Slack incident notifications
@@ -128,6 +131,20 @@ whether current agent activity is statistically unusual.
 - Next.js, React, and Cytoscape.js
 - Splunk HEC and MCP Server for Splunk Platform
 - Slack incoming webhooks
+
+## Third-Party Services And Models
+
+OpsWitness source code is released under the repository's MIT license.
+Third-party services and models remain subject to their own terms:
+
+- [Cisco Deep Time Series Model](https://github.com/splunk/cisco-time-series-model)
+  is consumed from its official repository under Apache-2.0.
+- [Foundation-Sec-1.1-8B-Instruct](https://huggingface.co/fdtn-ai/Foundation-Sec-1.1-8B-Instruct)
+  is accessed through the Hugging Face inference router. OpsWitness does not
+  redistribute its weights; use remains subject to the model notice and the
+  Hugging Face provider terms.
+- Splunk Cloud, Splunk MCP Server, Splunk AI Toolkit, and Slack are external
+  services configured by the operator under their respective terms.
 
 ## Requirements
 

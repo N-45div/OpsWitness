@@ -247,8 +247,12 @@ sequenceDiagram
   API->>Splunk: fit DensityFunction over HEC evidence volume
   API->>API: validate Foundation-Sec advisory and cited evidence
   API->>API: record CDTSM forecast, confidence bounds, and predicted peak
-  API->>Policy: execute approved saved search and resolve KV policy
-  Policy-->>API: verification and allowed response
+  API->>Policy: discover approved saved search and KV policy
+  alt Governance assets installed
+    Policy-->>API: verification and allowed response
+  else Governance assets unavailable
+    Policy-->>API: explicit fail-closed unavailable result
+  end
   API->>Graph: add ToolCall, SplunkSearch, and SplunkResult nodes
 
   API->>Graph: validate every cited evidence_node_id
