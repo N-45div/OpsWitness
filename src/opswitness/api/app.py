@@ -587,9 +587,9 @@ async def run_live_incident_drill(
     try:
         hosted_model_name = os.getenv("SPLUNK_HOSTED_MODEL_NAME", "").strip()
         analytics_label = (
-            "Configured Splunk MLTK model inference"
+            "Configured Splunk MLTK model inference through MCP"
             if hosted_model_name
-            else "Splunk-native anomaly analytics"
+            else "Splunk-native anomalydetection through MCP"
         )
         hosted_model = await run_hosted_model_inference(
             mcp_proxy(),
