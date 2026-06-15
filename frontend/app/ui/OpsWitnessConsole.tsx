@@ -166,37 +166,20 @@ export function OpsWitnessConsole() {
         </div>
 
         <section className="statusPanel">
-          <h2>Splunk</h2>
-          <StatusRow label="HEC" ok={status ? status.hec.configured && status.hec.reachable : null} />
-          <StatusRow
-            label="Direct REST (optional)"
-            ok={status ? status.search.configured && status.search.reachable : null}
-          />
-          <StatusRow label="MCP Proxy" ok={status ? status.mcp_proxy.configured : null} />
-          <StatusRow
-            label="Preflight endpoint"
-            ok={status ? status.mcp_proxy.preflight_configured : null}
-          />
-          <StatusRow label="Slack" ok={status ? status.slack.configured : null} />
-          <StatusRow
-            label="Splunk-hosted model"
-            ok={status ? status.hosted_model.configured : null}
-          />
-          <StatusRow
-            label="Foundation-Sec advisory"
-            ok={status ? status.foundation_sec.configured : null}
-          />
-          <StatusRow label="Cisco time-series model" ok={status ? status.cdtsm.ready : null} />
-          <StatusRow
-            label="Splunk SOAR"
-            ok={status ? status.soar.configured && status.soar.reachable : null}
-          />
-          <p>HEC acknowledgement mode: {status?.hec.ack_mode ?? "unknown"}</p>
-          <p>
-            Native anomaly requires live tool:{" "}
-            {status?.mcp_proxy.native_anomaly_requires_tool ?? "splunk_run_query"}
-          </p>
-          <p>Required MCP capability: {status?.mcp_required_capability ?? "mcp_tool_execute"}</p>
+          <h2>Connected capabilities</h2>
+          {status?.hec.configured && status.hec.reachable && <StatusRow label="Splunk HEC" ok />}
+          {status?.search.configured && status.search.reachable && (
+            <StatusRow label="Splunk Search API" ok />
+          )}
+          {status?.mcp_proxy.configured && <StatusRow label="Splunk MCP Proxy" ok />}
+          {status?.mcp_proxy.preflight_configured && <StatusRow label="MCP Preflight" ok />}
+          {status?.slack.configured && <StatusRow label="Slack" ok />}
+          {status?.hosted_model.configured && <StatusRow label="Splunk-hosted model" ok />}
+          {status?.foundation_sec.configured && <StatusRow label="Foundation-Sec advisory" ok />}
+          {status?.cdtsm.ready && <StatusRow label="Cisco time-series model" ok />}
+          {status?.hec.configured && status.hec.reachable && (
+            <p>HEC acknowledgement: {status.hec.ack_mode}</p>
+          )}
         </section>
 
         <section className="runSection">
@@ -441,9 +424,6 @@ function IncidentOverview({
           <span className="slackStatus">
             <MessageSquare size={14} /> Slack: {incident.slack_status}
           </span>
-          <span className="slackStatus">
-            <ShieldCheck size={14} /> SOAR: {incident.soar_status}
-          </span>
           {incident.approval_status === "pending" && (
             <>
               <button disabled={loading} onClick={() => onDecision("approved")}>
@@ -518,12 +498,11 @@ function formatTime(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleTimeString();
 }
 
-function StatusRow({ label, ok }: { label: string; ok: boolean | null }) {
-  const state = ok === null ? "unavailable" : ok ? "connected" : "not connected";
+function StatusRow({ label, ok }: { label: string; ok: boolean }) {
   return (
     <div className="statusRow">
       <span>{label}</span>
-      <strong className={ok === null ? "unknown" : ok ? "ok" : "bad"}>{state}</strong>
+      <strong className={ok ? "ok" : "bad"}>{ok ? "connected" : "not connected"}</strong>
     </div>
   );
 }
