@@ -70,8 +70,9 @@ system:
 - **Indexer acknowledgement** can confirm that evidence was indexed before an
   action proceeds.
 - **Splunk Search** independently verifies the evidence shown by OpsWitness.
-- **Splunk-native analytics** executes `anomalydetection` inside Splunk. An
-  explicitly configured MLTK model can be executed through `apply`.
+- **Splunk AI Toolkit** is discovered through MCP. The connected hackathon
+  stack exposed 45 algorithms; OpsWitness selected and executed
+  `DensityFunction` through `splunk_run_query`.
 - **Approved saved searches** independently verify agent-generated conclusions.
 - **KV Store policy** maps services to criticality and allowed response actions.
 - **Splunk dashboard** provides an independent view of MCP calls, risky
@@ -91,7 +92,8 @@ independent verification surface.
 - Detection for prompt injection, poisoned tool metadata, broad searches,
   sensitive-index access, raw exports, and long query windows
 - Portable Splunk-native anomaly investigation
-- Splunk-native anomaly inference with optional named MLTK model
+- Live discovery of the Splunk AI Toolkit algorithm inventory through MCP
+- Splunk AITK `DensityFunction` inference over real HEC evidence volume
 - Validated Foundation-Sec advisory reasoning with cited-evidence filtering
 - Self-hosted Cisco Deep Time Series Model zero-shot forecasting
 - Organization-approved saved-search verification
@@ -103,6 +105,20 @@ independent verification surface.
 - One-click live incident drill across HEC, MCP, native SPL, Slack, and approval
 - Interactive Next.js evidence graph and timeline
 - Installable Splunk app with dashboard, KV Store collections, and saved searches
+
+## Why DensityFunction
+
+OpsWitness selected `DensityFunction` from the 45 AI Toolkit algorithms
+discovered through Splunk MCP. It learns the normal distribution of agent
+evidence-event volume and returns explicit `IsOutlier(...)` values and learned
+`BoundaryRanges`.
+
+This is a better fit for evidence-first agent operations than a clustering or
+classification algorithm: it does not require labeled incidents, its boundaries
+are inspectable by responders, and unusual investigation activity becomes
+auditable Splunk evidence. Cisco Deep Time Series Model remains responsible for
+forecasting where an operational signal is heading; `DensityFunction` detects
+whether current agent activity is statistically unusual.
 
 ## Technology
 

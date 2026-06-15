@@ -26,6 +26,7 @@ class SplunkMCPPreflight(BaseModel):
     skipped_contextual_tools: list[str] = Field(default_factory=list)
     unavailable_tools: list[str] = Field(default_factory=list)
     anomaly_query_supported: bool = False
+    mltk_algorithms: list[str] = Field(default_factory=list)
     details: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -128,6 +129,38 @@ async def _discover_mcp(
         executed.append(tool_name)
         details[tool_name] = response.body
 
+    mltk_algorithms: list[str] = []
+    if "splunk_get_knowledge_objects" in available:
+        response, response_events = await proxy.forward(
+            {
+                "jsonrpc": "2.0",
+                "id": 10,
+                "method": "tools/call",
+                "params": {
+                    "name": "splunk_get_knowledge_objects",
+                    "arguments": {"type": "mltk_algorithms", "row_limit": 100},
+                },
+            },
+            run_id=run,
+            session_id=session,
+            agent_id="opswitness-preflight",
+            headers=headers,
+        )
+        events.extend(response_events)
+        executed.append("splunk_get_knowledge_objects:mltk_algorithms")
+        details["mltk_algorithms"] = response.body
+        structured = (
+            response.body.get("result", {}).get("structuredContent", {})
+            if isinstance(response.body, dict)
+            else {}
+        )
+        results = structured.get("results", []) if isinstance(structured, dict) else []
+        mltk_algorithms = sorted(
+            item["name"]
+            for item in results
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+        )
+
     unavailable = [tool for tool in PREFLIGHT_TOOLS if tool not in available]
     return (
         SplunkMCPPreflight(
@@ -138,6 +171,7 @@ async def _discover_mcp(
             skipped_contextual_tools=skipped_contextual,
             unavailable_tools=unavailable,
             anomaly_query_supported="splunk_run_query" in available,
+            mltk_algorithms=mltk_algorithms,
             details=details,
         ),
         events,

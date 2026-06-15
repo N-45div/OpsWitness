@@ -21,7 +21,7 @@ flowchart LR
     Explain["Evidence Explainer"]
     Incident["Incident and Approval Service"]
     Verify["Approved Detection Verifier"]
-    Hosted["Splunk-native Analytics<br/>Optional MLTK Model"]
+    Hosted["Splunk AITK DensityFunction<br/>evidence-volume outlier detection"]
     FoundationSec["Foundation-Sec Advisory<br/>validated structured output"]
     CDTSMAdapter["CDTSM Forecast Adapter<br/>zero-shot predictive evidence"]
     KVPolicy["KV Policy Resolver"]
@@ -48,7 +48,7 @@ flowchart LR
     Dashboard["OpsWitness Splunk Dashboard"]
     Saved["Approved Saved Searches"]
     KV[("OpsWitness KV Store")]
-    Models["Native Analytics / MLTK Models"]
+    Models["45 discoverable AITK algorithms<br/>DensityFunction selected"]
   end
 
   Agent --> Proxy
@@ -243,7 +243,8 @@ sequenceDiagram
 
   API->>Splunk: investigate operational evidence through MCP
   Splunk-->>API: scoped query results
-  API->>Splunk: run native anomaly analytics or configured MLTK model
+  API->>Splunk: discover 45 AITK algorithms through MCP
+  API->>Splunk: fit DensityFunction over HEC evidence volume
   API->>API: validate Foundation-Sec advisory and cited evidence
   API->>API: record CDTSM forecast, confidence bounds, and predicted peak
   API->>Policy: execute approved saved search and resolve KV policy

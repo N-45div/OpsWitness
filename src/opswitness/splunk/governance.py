@@ -16,6 +16,8 @@ SAVED_SEARCH_BY_SCENARIO = {
     "queue_saturation": "OpsWitness - Verify Queue Saturation",
 }
 
+SELECTED_MLTK_ALGORITHM = "DensityFunction"
+
 
 class MCPToolExecution(BaseModel):
     status: Literal["executed", "unavailable"]
@@ -169,7 +171,12 @@ async def run_hosted_model_inference(
             proxy,
             tool_name="splunk_run_query",
             arguments={
-                "query": f"{scenario_query} | anomalydetection method=zscore action=annotate",
+                "query": (
+                    'search index=main sourcetype="opswitness:event" earliest=-24h '
+                    "| timechart span=5m count AS agent_evidence_events "
+                    "| fit DensityFunction agent_evidence_events threshold=0.01 "
+                    '| table _time agent_evidence_events "IsOutlier(agent_evidence_events)" BoundaryRanges'
+                ),
                 "row_limit": 100,
             },
             run_id=run_id,
@@ -198,7 +205,7 @@ async def persist_model_feedback(
     safe_reviewer = reviewer.replace('"', '\\"')
     query = (
         "| makeresults "
-        f'| eval run_id="{safe_run_id}", model_name="splunk-native-anomalydetection", '
+        f'| eval run_id="{safe_run_id}", model_name="{SELECTED_MLTK_ALGORITHM}", '
         f'classification="{safe_scenario}", accepted={"true" if accepted else "false"}, '
         f'reviewer="{safe_reviewer}", reviewed_at=now() '
         "| fields run_id model_name classification accepted reviewer reviewed_at "

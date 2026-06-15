@@ -35,6 +35,7 @@ from opswitness.splunk.capabilities import (
 from opswitness.splunk.search import SplunkSearchClient, SplunkSearchConfig
 from opswitness.splunk.governance import (
     SAVED_SEARCH_BY_SCENARIO,
+    SELECTED_MLTK_ALGORITHM,
     discover_kv_policy,
     persist_model_feedback,
     run_hosted_model_inference,
@@ -468,7 +469,11 @@ async def run_live_incident_drill(
     complete(
         "mcp",
         "Splunk MCP capability preflight",
-        f"Discovered {len(preflight.available_tools)} tools; splunk_run_query is available.",
+        (
+            f"Discovered {len(preflight.available_tools)} tools and "
+            f"{len(preflight.mltk_algorithms)} MLTK algorithms; "
+            f"{SELECTED_MLTK_ALGORITHM} selected."
+        ),
     )
 
     try:
@@ -589,7 +594,7 @@ async def run_live_incident_drill(
         analytics_label = (
             "Configured Splunk MLTK model inference through MCP"
             if hosted_model_name
-            else "Splunk-native anomalydetection through MCP"
+            else "Splunk AITK DensityFunction through MCP"
         )
         hosted_model = await run_hosted_model_inference(
             mcp_proxy(),
@@ -613,7 +618,7 @@ async def run_live_incident_drill(
                         source_trust=SourceTrust.trusted,
                         payload={
                             "model_name": os.getenv("SPLUNK_HOSTED_MODEL_NAME")
-                            or "splunk-native-anomalydetection",
+                            or SELECTED_MLTK_ALGORITHM,
                             "splunk_hosted": bool(hosted_model_name),
                             "status": hosted_model.status,
                         },
