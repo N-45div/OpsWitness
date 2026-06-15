@@ -25,7 +25,6 @@ flowchart LR
     FoundationSec["Foundation-Sec Advisory<br/>validated structured output"]
     CDTSMAdapter["CDTSM Forecast Adapter<br/>zero-shot predictive evidence"]
     KVPolicy["KV Policy Resolver"]
-    SOARAdapter["SOAR Approval Adapter"]
     UI["Next.js Incident Room<br/>:3000"]
   end
 
@@ -50,7 +49,6 @@ flowchart LR
     Saved["Approved Saved Searches"]
     KV[("OpsWitness KV Store")]
     Models["Native Analytics / MLTK Models"]
-    SOAR["Splunk SOAR"]
   end
 
   Agent --> Proxy
@@ -98,8 +96,6 @@ flowchart LR
   Explain --> Incident
   Incident --> Incidents
   Incident --> Slack
-  Incident --> SOARAdapter
-  SOARAdapter --> SOAR
   Incident --> UI
 
   Index --> Dashboard
@@ -238,7 +234,6 @@ sequenceDiagram
   participant Graph as Evidence Graph
   participant Splunk as Splunk HEC and Search
   participant Policy as Splunk KV and Saved Searches
-  participant SOAR as Splunk SOAR
   participant Slack as Slack
   participant Human as Incident Commander
 
@@ -273,8 +268,6 @@ sequenceDiagram
   alt Approved
     API->>Graph: add APPROVED decision
     API->>Splunk: index human.approval.approved
-    API->>SOAR: run mapped bounded playbook
-    SOAR-->>API: execution result
   else Rejected
     API->>Graph: add REJECTED decision
     API->>Splunk: index human.approval.rejected

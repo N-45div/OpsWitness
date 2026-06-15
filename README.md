@@ -40,7 +40,7 @@ OpsWitness MCP proxy
         |
         +--> Self-hosted Cisco Deep Time Series Model forecast
         |
-        +--> Incident Room, Slack brief, human approval, Splunk SOAR
+        +--> Incident Room, Slack brief, and human approval
 ```
 
 1. The agent connects to the OpsWitness MCP proxy.
@@ -56,7 +56,6 @@ OpsWitness MCP proxy
 8. Splunk KV Store policy constrains the permitted response.
 9. OpsWitness reconstructs the run as a causal graph and evaluates risky paths.
 10. Remediation proposals remain pending until a human approves or rejects them.
-11. Approved actions execute through Splunk SOAR only when SOAR is configured.
 
 See [architecture_diagram.md](architecture_diagram.md) for the complete component and data flow.
 
@@ -74,9 +73,7 @@ system:
 - **Splunk-native analytics** executes `anomalydetection` inside Splunk. An
   explicitly configured MLTK model can be executed through `apply`.
 - **Approved saved searches** independently verify agent-generated conclusions.
-- **KV Store policy** maps services to criticality, allowed actions, and SOAR
-  playbooks.
-- **Splunk SOAR** executes bounded playbooks only after human approval.
+- **KV Store policy** maps services to criticality and allowed response actions.
 - **Splunk dashboard** provides an independent view of MCP calls, risky
   searches, incidents, and approvals.
 
@@ -99,7 +96,6 @@ independent verification surface.
 - Self-hosted Cisco Deep Time Series Model zero-shot forecasting
 - Organization-approved saved-search verification
 - KV Store-backed service and response policy
-- Human-approved Splunk SOAR execution
 - Evidence-cited deployment incident briefs
 - Safe SPL query rewriting
 - Slack incident notifications
@@ -125,7 +121,6 @@ independent verification surface.
 - MCP Server for Splunk Platform and an encrypted MCP token
 - The bundled Splunk app for saved-search and KV policy stages
 - Optional Slack incoming webhook
-- Optional Splunk SOAR endpoint and automation token
 - Optional Hugging Face token for Foundation-Sec advisory reasoning
 - Optional self-hosted Cisco Deep Time Series Model server
 
@@ -176,9 +171,6 @@ SPLUNK_HOSTED_MODEL_NAME=
 FOUNDATION_SEC_API_KEY=
 CDTSM_ENDPOINT=http://127.0.0.1:8080
 CDTSM_ENV_FILE=/absolute/path/to/cisco-time-series-model/serve/.env
-SPLUNK_SOAR_URL=
-SPLUNK_SOAR_TOKEN=
-SPLUNK_SOAR_CONTAINER_ID=
 ```
 
 `SPLUNK_HEC_ACK_MODE` supports:
